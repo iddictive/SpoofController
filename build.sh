@@ -14,7 +14,7 @@ swiftc -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" main.swift -framework Cocoa
 
 # Copy Info.plist and Icon
 cp Info.plist "${APP_BUNDLE}/Contents/Info.plist"
-cp assets/AppIcon.icns "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
+cp assets/icon.icns "${APP_BUNDLE}/Contents/Resources/icon.icns"
 
 echo "Build complete: ${APP_BUNDLE}"
 
