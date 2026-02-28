@@ -103,11 +103,26 @@ class SettingsStore {
         if let windowInt = Int(windowSize), windowInt > 0 {
             uniqueFlags += " --window-size \(windowInt)"
         }
-        let cleanedManual = manual.components(separatedBy: .whitespaces)
-            .filter { !$0.isEmpty && !flags.contains($0) && !$0.hasPrefix("--default-ttl") && !$0.hasPrefix("--window-size") }
-            .filter { Int($0) == nil } // Extra safety to avoid numbers leaking into manual
-            .joined(separator: " ")
-        customArgs = "\(uniqueFlags) \(cleanedManual)".trimmingCharacters(in: .whitespaces)
+        // Strict filtering for manual arguments: remove any flags we already handle + their values if they are numeric
+        let manualParts = manual.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        var cleanedParts: [String] = []
+        var i = 0
+        while i < manualParts.count {
+            let part = manualParts[i]
+            if part == "--default-ttl" || part == "--window-size" {
+                i += 2 // Skip flag and value
+            } else if flags.contains(part) {
+                i += 1 // Skip known flag
+            } else if Int(part) != nil {
+                // If it's a standalone number, only keep it if it's NOT a value of a known flag (heuristic)
+                // For now, let's just skip it if it's likely a leaked TTL/WindowSize
+                i += 1 
+            } else {
+                cleanedParts.append(part)
+                i += 1
+            }
+        }
+        customArgs = "\(uniqueFlags) \(cleanedParts.joined(separator: " "))".trimmingCharacters(in: .whitespaces)
     }
     
     var launchAtLogin: Bool {
@@ -468,12 +483,22 @@ class HelpWindowController: NSWindowController {
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("```") {
-                if inCodeBlock { result += "<pre><code>\(codeContent.trimmingCharacters(in: .whitespacesAndNewlines))</code></pre>\n"; codeContent = ""; inCodeBlock = false }
-                else { inCodeBlock = true }; continue
+                if inCodeBlock { 
+                    result += "<pre><code>\(codeContent.trimmingCharacters(in: .whitespacesAndNewlines))</code></pre>\n"
+                    codeContent = ""
+                    inCodeBlock = false 
+                } else { 
+                    inCodeBlock = true 
+                }
+                continue
             }
-            if inCodeBlock { codeContent += line.replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;") + "\n"; continue }
-            if trimmed.isEmpty { continue }
+            if inCodeBlock { 
+                codeContent += line.replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;") + "\n"
+                continue 
+            }
+            if trimmed.isEmpty { result += "<br>\n"; continue }
             if trimmed.hasPrefix("<") { result += line + "\n"; continue }
+            
             if line.hasPrefix("# ") { result += "<h1>\(processInline(String(line.dropFirst(2))))</h1>\n"; continue }
             if line.hasPrefix("## ") { result += "<h2>\(processInline(String(line.dropFirst(3))))</h2>\n"; continue }
             if line.hasPrefix("### ") { result += "<h3>\(processInline(String(line.dropFirst(4))))</h3>\n"; continue }
