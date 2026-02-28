@@ -144,19 +144,11 @@ class SpoofManager {
     private(set) var process: Process?
     private var installProcess: Process?
     private(set) var isRunning = false
-    private var outputPipe: Pipe?
-    var logHandler: ((String) -> Void)?
     
-    private let logQueue = DispatchQueue(label: "com.spoof.logs", qos: .background)
-    private var pendingLogBuffer = ""
-    private var logFlushTimer: Timer?
-
     func start(completion: @escaping (Bool, String?) -> Void) {
         if isRunning { stop() }
+        killOrphans() // Ensure clean state
         isRunning = false
-        pendingLogBuffer = ""
-        
-        startLogFlushTimer()
         
         let binaryPath = SettingsStore.shared.binaryPath
         if !FileManager.default.fileExists(atPath: binaryPath) {
@@ -171,34 +163,16 @@ class SpoofManager {
         let args = rawArgs.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
         process.arguments = args
         
-        let pipe = Pipe()
-        self.outputPipe = pipe
-        process.standardOutput = pipe
-        process.standardError = pipe
         
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-                return
-            }
-            self?.logQueue.async {
-                if let str = String(data: data, encoding: .utf8), !str.isEmpty {
-                    self?.pendingLogBuffer += str
-                    if let buffer = self?.pendingLogBuffer, buffer.count > 50000 {
-                        self?.pendingLogBuffer = String(buffer.suffix(25000))
-                    }
-                }
-            }
-        }
+        // No pipe needed if we don't process logs - prevents deadlocks
+        process.standardOutput = nil
+        process.standardError = nil
+        
         
         process.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async {
                 self?.isRunning = false
                 self?.process = nil
-                self?.stopLogFlushTimer()
-                self?.outputPipe?.fileHandleForReading.readabilityHandler = nil
-                self?.outputPipe = nil
                 (NSApp.delegate as? AppDelegate)?.refreshUI()
             }
         }
@@ -249,56 +223,28 @@ class SpoofManager {
 
     func stop() {
         isRunning = false
-        stopLogFlushTimer()
         process?.terminate()
         process = nil
-        outputPipe?.fileHandleForReading.readabilityHandler = nil
-        outputPipe = nil
+        killOrphans() // Double safety cleanup
         disableSystemProxy()
         (NSApp.delegate as? AppDelegate)?.refreshUI()
     }
 
+    private func killOrphans() {
+        let killer = Process()
+        killer.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        killer.arguments = ["-9", "spoofdpi"]
+        try? killer.run()
+        killer.waitUntilExit()
+    }
+
     func disableSystemProxy() {
-        let script = """
-        services=$(networksetup -listallnetworkservices | grep -v '*')
-        while IFS= read -r service; do
-            networksetup -setwebproxystate "$service" off 2>/dev/null
-            networksetup -setsecurewebproxystate "$service" off 2>/dev/null
-        done <<< "$services"
-        """
+        let script = "services=$(networksetup -listallnetworkservices | grep -v '*'); while IFS= read -r service; do networksetup -setwebproxystate \"$service\" off 2>/dev/null; networksetup -setsecurewebproxystate \"$service\" off 2>/dev/null; done <<< \"$services\""
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-c", script]
         try? process.run()
         process.waitUntilExit()
-    }
-
-    private func startLogFlushTimer() {
-        DispatchQueue.main.async {
-            self.logFlushTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-                self?.flushLogs()
-            }
-        }
-    }
-
-    private func stopLogFlushTimer() {
-        DispatchQueue.main.async {
-            self.logFlushTimer?.invalidate()
-            self.logFlushTimer = nil
-            self.flushLogs() // Final flush
-        }
-    }
-
-    private func flushLogs() {
-        logQueue.async { [weak self] in
-            guard let self = self, !self.pendingLogBuffer.isEmpty else { return }
-            let logs = self.pendingLogBuffer
-            self.pendingLogBuffer = ""
-            
-            DispatchQueue.main.async {
-                self.logHandler?(logs)
-            }
-        }
     }
 }
 
@@ -465,43 +411,7 @@ class SettingsWindowController: NSWindowController {
     }
 }
 
-class LogWindowController: NSWindowController, NSWindowDelegate {
-    var textView: NSTextView!
-    convenience init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.center(); window.title = L10n.shared.logs
-        self.init(window: window); setupUI()
-        window.delegate = self
-        SpoofManager.shared.logHandler = { [weak self] text in self?.appendLog(text) }
-    }
-    func setupUI() {
-        let scrollView = NSScrollView(frame: window!.contentView!.bounds)
-        scrollView.hasVerticalScroller = true; scrollView.autoresizingMask = [.width, .height]
-        let contentSize = scrollView.contentSize
-        textView = NSTextView(frame: NSRect(x: 0, y: 0, width: contentSize.width, height: contentSize.height))
-        textView.minSize = NSSize(width: 0.0, height: contentSize.height)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.isVerticallyResizable = true; textView.isHorizontallyResizable = false; textView.autoresizingMask = [.width]
-        textView.isEditable = false; textView.backgroundColor = .black; textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        textView.textContainer?.containerSize = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
-        scrollView.documentView = textView; window?.contentView?.addSubview(scrollView)
-    }
-    func appendLog(_ text: String) {
-        let attrStr = NSAttributedString(string: text, attributes: [.foregroundColor: NSColor.green, .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)])
-        textView.textStorage?.append(attrStr)
-        
-        let maxChars = 200000
-        if let storage = textView.textStorage, storage.length > maxChars {
-            storage.deleteCharacters(in: NSRange(location: 0, length: storage.length - 100000))
-        }
-        
-        textView.scrollToEndOfDocument(nil)
-    }
-    func windowWillClose(_ notification: Notification) {
-        SpoofManager.shared.logHandler = nil
-    }
-}
+// MARK: - Help Window
 
 class HelpWindowController: NSWindowController {
     var webView: WKWebView!
@@ -585,7 +495,6 @@ class LoadingWindowController: NSWindowController {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var settingsWindow: SettingsWindowController?
-    var logWindow: LogWindowController?
     var helpWindow: HelpWindowController?
     var loadingWindow: LoadingWindowController?
     
@@ -668,7 +577,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: SpoofManager.shared.isRunning ? L10n.shared.stop : L10n.shared.start, action: #selector(toggle), keyEquivalent: "t"))
         menu.addItem(NSMenuItem(title: L10n.shared.settings, action: #selector(showSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: L10n.shared.logs, action: #selector(showLogs), keyEquivalent: "l"))
         menu.addItem(NSMenuItem(title: L10n.shared.instructions, action: #selector(showHelp), keyEquivalent: "h"))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: L10n.shared.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -682,7 +590,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showSettings() { if settingsWindow == nil { settingsWindow = SettingsWindowController() }; NSApp.activate(ignoringOtherApps: true); settingsWindow?.showWindow(nil) }
-    @objc func showLogs() { if logWindow == nil { logWindow = LogWindowController() }; NSApp.activate(ignoringOtherApps: true); logWindow?.showWindow(nil) }
     @objc func showHelp() { if helpWindow == nil { helpWindow = HelpWindowController() }; NSApp.activate(ignoringOtherApps: true); helpWindow?.showWindow(nil) }
     
     func applicationWillTerminate(_ notification: Notification) {
