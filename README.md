@@ -26,6 +26,7 @@ It is a **GoodbyeDPI Mac alternative** that restores access to YouTube and block
 - **Auto-Install**: Handles `spoofdpi` dependency via Homebrew.
 - **Logs**: Built-in log viewer.
 - **Customizable**: Set binary path and arguments.
+- **Advanced Settings**: Configure TTL and Window Size values for specialized bypass scenarios.
 
 ### Setup
 1. **Download**: Get `.dmg` from [Releases](https://github.com/iddictive/SpoofController/releases).
@@ -61,6 +62,7 @@ curl -sL https://raw.githubusercontent.com/iddictive/SpoofController/main/script
 - **Авто-установка**: Сам проверит и поставит `spoofdpi`.
 - **Логи**: Окно мониторинга процесса.
 - **Гибкость**: Настройка бинарника и аргументов.
+- **Расширенные настройки**: Установка значений TTL и Window Size для специфических сценариев обхода.
 
 ### Установка
 1. **Скачать**: `.dmg` со страницы [Релизов](https://github.com/iddictive/SpoofController/releases).

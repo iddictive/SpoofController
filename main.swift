@@ -122,6 +122,7 @@ class SpoofManager {
     private var outputPipe: Pipe?
     var logHandler: ((String) -> Void)?
     private(set) var logBuffer = ""
+    private let logQueue = DispatchQueue(label: "com.spoof.logQueue", qos: .background)
     
     func start(completion: @escaping (Bool, String?) -> Void) {
         if isRunning { stop() }
@@ -149,14 +150,20 @@ class SpoofManager {
         
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            if let str = String(data: data, encoding: .utf8), !str.isEmpty {
-                DispatchQueue.main.async {
+            guard !data.isEmpty else { return }
+            
+            self?.logQueue.async {
+                if let str = String(data: data, encoding: .utf8), !str.isEmpty {
+                    // Update buffer in background
                     self?.logBuffer += str
-                    // Keep buffer reasonable
-                    if self?.logBuffer.count ?? 0 > 100000 {
+                    if (self?.logBuffer.count ?? 0) > 100000 {
                         self?.logBuffer = String(self?.logBuffer.suffix(50000) ?? "")
                     }
-                    self?.logHandler?(str)
+                    
+                    // Throttle UI update by only sending to main if needed
+                    DispatchQueue.main.async {
+                        self?.logHandler?(str)
+                    }
                 }
             }
         }
@@ -221,7 +228,26 @@ class SpoofManager {
         process = nil
         outputPipe?.fileHandleForReading.readabilityHandler = nil
         outputPipe = nil
+        disableSystemProxy()
         (NSApp.delegate as? AppDelegate)?.refreshUI()
+    }
+
+    func disableSystemProxy() {
+        // We use networksetup to ensure all proxies are disabled. 
+        // This is a "heavy" but reliable way to clean up after a crash.
+        let script = """
+        services=$(networksetup -listallnetworkservices | grep -v '*')
+        while IFS= read -r service; do
+            networksetup -setwebproxystate "$service" off 2>/dev/null
+            networksetup -setsecurewebproxystate "$service" off 2>/dev/null
+        done <<< "$services"
+        """
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-c", script]
+        try? process.run()
+        process.waitUntilExit()
     }
 }
 
@@ -673,8 +699,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var logWindow: LogWindowController?
     var helpWindow: HelpWindowController?
     var loadingWindow: LoadingWindowController?
+    
+    private var iconCache: [Bool: NSImage] = [:]
+    private var lastRefreshTime: Date = .distantPast
+    private let refreshThrottleInterval: TimeInterval = 0.5
+    
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupSignalHandlers()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         refreshUI()
         
@@ -759,12 +791,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func refreshUI() {
+        let now = Date()
+        if now.timeIntervalSince(lastRefreshTime) < refreshThrottleInterval {
+            // Schedule a refresh if we're throttling to ensure final state is correct
+            DispatchQueue.main.asyncAfter(deadline: .now() + refreshThrottleInterval) { [weak self] in
+                self?.refreshUI()
+            }
+            return
+        }
+        lastRefreshTime = now
+        
         DispatchQueue.main.async { [weak self] in
-            if let button = self?.statusItem?.button {
-                button.image = self?.createStatusIcon(isRunning: SpoofManager.shared.isRunning)
+            guard let self = self else { return }
+            if let button = self.statusItem?.button {
+                let isRunning = SpoofManager.shared.isRunning
+                if self.iconCache[isRunning] == nil {
+                    self.iconCache[isRunning] = self.createStatusIcon(isRunning: isRunning)
+                }
+                button.image = self.iconCache[isRunning]
                 button.imagePosition = .imageOnly
             }
-            self?.setupMenu()
+            self.setupMenu()
         }
     }
 
@@ -837,6 +884,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showLogs() { if logWindow == nil { logWindow = LogWindowController() }; NSApp.activate(ignoringOtherApps: true); logWindow?.showWindow(nil as Any?) }
     @objc func showHelp() { if helpWindow == nil { helpWindow = HelpWindowController() }; NSApp.activate(ignoringOtherApps: true); helpWindow?.showWindow(nil as Any?) }
     func applicationWillTerminate(_ notification: Notification) { SpoofManager.shared.stop() }
+
+    private func setupSignalHandlers() {
+        let signals = [SIGINT, SIGTERM]
+        for sig in signals {
+            signal(sig) { _ in
+                // Signal handlers are very limited (only async-signal-safe functions).
+                // However, for this simple case, we just want to ensure stop() is called.
+                // Since this is a Swift app, we'll use a more robust approach via DispatchSource.
+                DispatchQueue.main.async {
+                    SpoofManager.shared.stop()
+                    exit(0)
+                }
+            }
+        }
+        // Prevent signal from killing the app immediately so our handlers can run
+        for sig in signals {
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+            source.setEventHandler {
+                SpoofManager.shared.stop()
+                exit(0)
+            }
+            source.resume()
+        }
+    }
 }
 
 let app = NSApplication.shared
