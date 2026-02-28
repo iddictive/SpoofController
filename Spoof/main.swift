@@ -34,6 +34,15 @@ struct L10n {
     var launchAtLogin: String { isRussian ? "Запускать при старте системы" : "Launch at system startup" }
     var saveAndRestart: String { isRussian ? "Сохранить и Перезапустить" : "Save & Restart" }
     
+    // Advanced App Settings
+    var ttlTitle: String { isRussian ? "TTL пакетов:" : "Packet TTL:" }
+    var ttlPlaceholder: String { isRussian ? "По умолч: 64" : "Default: 64" }
+    var ttlInstruction: String { isRussian ? "Помогает обходить некоторые типы DPI." : "Helps bypass certain DPI types." }
+    var windowSizeTitle: String { isRussian ? "Размер фрагментации (Window Size):" : "Fragmentation (Window Size):" }
+    var windowSizePlaceholder: String { isRussian ? "По умолч: 0 (Выкл)" : "Default: 0 (Off)" }
+    var windowSizeInstruction: String { isRussian ? "Измените, если блочит HTTPS." : "Adjust if HTTPS is blocked." }
+
+    
     // Flag Descriptions
     var descSystemProxy: String { isRussian ? "Использовать системный прокси" : "Use system-wide proxy" }
     var descSilent: String { isRussian ? "Скрыть баннер при запуске" : "Suppress startup banner" }
@@ -71,13 +80,29 @@ class SettingsStore {
         set { defaults.set(newValue, forKey: "customArgs") }
     }
     
-    var selectedFlags: Set<String> {
-        let args = customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-        return Set(args.filter { $0.hasPrefix("-") })
+    var defaultTTL: String {
+        get { defaults.string(forKey: "defaultTTL") ?? "" }
+        set { defaults.set(newValue, forKey: "defaultTTL") }
     }
     
-    func updateArgs(with flags: Set<String>, manual: String) {
-        let uniqueFlags = flags.joined(separator: " ")
+    var windowSize: String {
+        get { defaults.string(forKey: "windowSize") ?? "" }
+        set { defaults.set(newValue, forKey: "windowSize") }
+    }
+    
+    var selectedFlags: Set<String> {
+        let args = customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        return Set(args.filter { $0.hasPrefix("-") && !$0.hasPrefix("--default-ttl") && !$0.hasPrefix("--window-size") })
+    }
+    
+    func updateArgs(with flags: Set<String>, manual: String, ttl: String, windowSize: String) {
+        var uniqueFlags = flags.joined(separator: " ")
+        if let ttlInt = Int(ttl), ttlInt > 0 {
+            uniqueFlags += " --default-ttl \(ttlInt)"
+        }
+        if let windowInt = Int(windowSize), windowInt > 0 {
+            uniqueFlags += " --window-size \(windowInt)"
+        }
         customArgs = "\(uniqueFlags) \(manual)".trimmingCharacters(in: .whitespaces)
     }
     
@@ -116,7 +141,7 @@ class SettingsStore {
 // MARK: - Spoof Manager
 class SpoofManager {
     static let shared = SpoofManager()
-    private var process: Process?
+    private(set) var process: Process?
     private var installProcess: Process?
     private(set) var isRunning = false
     private var outputPipe: Pipe?
@@ -149,6 +174,10 @@ class SpoofManager {
         
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                return
+            }
             if let str = String(data: data, encoding: .utf8), !str.isEmpty {
                 DispatchQueue.main.async {
                     self?.logBuffer += str
@@ -234,6 +263,8 @@ struct ArgumentOption {
 class SettingsWindowController: NSWindowController {
     var pathField: NSTextField!
     var manualArgsField: NSTextField!
+    var ttlField: NSTextField!
+    var windowSizeField: NSTextField!
     var checkboxes: [NSButton] = []
     
     let options = [
@@ -246,7 +277,7 @@ class SettingsWindowController: NSWindowController {
     
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 450, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 450, height: 600),
             styleMask: [.titled, .closable],
             backing: .buffered, defer: false)
         window.center()
@@ -256,10 +287,10 @@ class SettingsWindowController: NSWindowController {
     }
     
     func setupUI() {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 450, height: 460))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 450, height: 600))
         window?.contentView = view
         
-        var currentY: CGFloat = 420
+        var currentY: CGFloat = 550
         
         // 1. Binary Path
         let pathLabel = NSTextField(labelWithString: L10n.shared.binaryPath)
@@ -300,7 +331,46 @@ class SettingsWindowController: NSWindowController {
         }
         currentY -= 15
         
-        // 3. Manual Args
+        // 3. TTL
+        let ttlLabel = NSTextField(labelWithString: L10n.shared.ttlTitle)
+        ttlLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        ttlLabel.frame = NSRect(x: 20, y: currentY, width: 110, height: 20)
+        view.addSubview(ttlLabel)
+        
+        ttlField = NSTextField(frame: NSRect(x: 135, y: currentY - 2, width: 80, height: 22))
+        ttlField.stringValue = SettingsStore.shared.defaultTTL
+        ttlField.placeholderString = L10n.shared.ttlPlaceholder
+        view.addSubview(ttlField)
+        
+        let ttlInstr = NSTextField(labelWithString: "— \(L10n.shared.ttlInstruction)")
+        ttlInstr.font = .systemFont(ofSize: 11)
+        ttlInstr.textColor = .secondaryLabelColor
+        ttlInstr.frame = NSRect(x: 220, y: currentY, width: 220, height: 18)
+        view.addSubview(ttlInstr)
+        
+        currentY -= 35
+        
+        // 4. Window Size
+        let wsLabel = NSTextField(labelWithString: L10n.shared.windowSizeTitle)
+        wsLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        wsLabel.frame = NSRect(x: 20, y: currentY, width: 280, height: 20)
+        view.addSubview(wsLabel)
+        currentY -= 25
+        
+        windowSizeField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 80, height: 22))
+        windowSizeField.stringValue = SettingsStore.shared.windowSize
+        windowSizeField.placeholderString = L10n.shared.windowSizePlaceholder
+        view.addSubview(windowSizeField)
+        
+        let wsInstr = NSTextField(labelWithString: "— \(L10n.shared.windowSizeInstruction)")
+        wsInstr.font = .systemFont(ofSize: 11)
+        wsInstr.textColor = .secondaryLabelColor
+        wsInstr.frame = NSRect(x: 105, y: currentY + 2, width: 330, height: 18)
+        view.addSubview(wsInstr)
+        
+        currentY -= 35
+        
+        // 5. Manual Args
         let manualLabel = NSTextField(labelWithString: L10n.shared.manualArgsTitle)
         manualLabel.font = .systemFont(ofSize: 13, weight: .bold)
         manualLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
@@ -348,7 +418,15 @@ class SettingsWindowController: NSWindowController {
         }
         
         SettingsStore.shared.binaryPath = pathField.stringValue
-        SettingsStore.shared.updateArgs(with: flags, manual: manualArgsField.stringValue)
+        SettingsStore.shared.defaultTTL = ttlField.stringValue.trimmingCharacters(in: .whitespaces)
+        SettingsStore.shared.windowSize = windowSizeField.stringValue.trimmingCharacters(in: .whitespaces)
+        
+        SettingsStore.shared.updateArgs(
+            with: flags, 
+            manual: manualArgsField.stringValue,
+            ttl: SettingsStore.shared.defaultTTL,
+            windowSize: SettingsStore.shared.windowSize
+        )
         
         if SpoofManager.shared.isRunning {
             SpoofManager.shared.stop()
@@ -841,7 +919,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showSettings() { if settingsWindow == nil { settingsWindow = SettingsWindowController() }; NSApp.activate(ignoringOtherApps: true); settingsWindow?.showWindow(nil as Any?) }
     @objc func showLogs() { if logWindow == nil { logWindow = LogWindowController() }; NSApp.activate(ignoringOtherApps: true); logWindow?.showWindow(nil as Any?) }
     @objc func showHelp() { if helpWindow == nil { helpWindow = HelpWindowController() }; NSApp.activate(ignoringOtherApps: true); helpWindow?.showWindow(nil as Any?) }
-    func applicationWillTerminate(_ notification: Notification) { SpoofManager.shared.stop() }
+    func applicationWillTerminate(_ notification: Notification) { 
+        if let proc = SpoofManager.shared.process {
+            proc.terminate()
+            proc.waitUntilExit() // Wait for it to revert proxy settings
+        }
+        SpoofManager.shared.stop() 
+    }
 }
 
 let app = NSApplication.shared
