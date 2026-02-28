@@ -1,5 +1,6 @@
 import Cocoa
 import Foundation
+import WebKit
 
 // MARK: - Localization
 struct L10n {
@@ -404,11 +405,11 @@ class LogWindowController: NSWindowController {
 }
 
 class HelpWindowController: NSWindowController {
-    var textView: NSTextView!
+    var webView: WKWebView!
     
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 650, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 600),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered, defer: false)
         window.center()
@@ -419,57 +420,103 @@ class HelpWindowController: NSWindowController {
     }
     
     func setupUI() {
-        let scrollView = NSScrollView(frame: window!.contentView!.bounds)
-        scrollView.hasVerticalScroller = true
-        scrollView.autoresizingMask = [.width, .height]
+        let config = WKWebViewConfiguration()
+        webView = WKWebView(frame: window!.contentView!.bounds, configuration: config)
+        webView.autoresizingMask = [.width, .height]
+        webView.setValue(false, forKey: "drawsBackground") // Transparent background
         
-        let contentSize = scrollView.contentSize
-        textView = NSTextView(frame: NSRect(x: 0, y: 0, width: contentSize.width, height: contentSize.height))
-        textView.minSize = NSSize(width: 0.0, height: contentSize.height)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.isEditable = false
-        textView.textContainerInset = NSSize(width: 20, height: 20)
-        
-        textView.textContainer?.containerSize = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
-        
-        scrollView.documentView = textView
-        window?.contentView?.addSubview(scrollView)
+        window?.contentView?.addSubview(webView)
     }
     
     func loadReadme() {
         guard let path = Bundle.main.path(forResource: "README", ofType: "md"),
               let content = try? String(contentsOfFile: path, encoding: .utf8) else {
-            textView.string = L10n.shared.isRussian ? "Инструкция недоступна." : "Manual not available."
+            webView.loadHTMLString("<html><body>\(L10n.shared.isRussian ? "Инструкция недоступна." : "Manual not available.")</body></html>", baseURL: nil)
             return
         }
         
-        let font = NSFont.systemFont(ofSize: 13)
-        let boldFont = NSFont.boldSystemFont(ofSize: 14)
-        let titleFont = NSFont.boldSystemFont(ofSize: 18)
+        let html = markdownToHTML(content)
+        let styledHTML = """
+        <html>
+        <head>
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-size: 14px;
+                    line-height: 1.6;
+                    color: #333;
+                    padding: 30px;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    background-color: transparent;
+                }
+                @media (prefers-color-scheme: dark) {
+                    body { color: #eee; }
+                    a { color: #4dabf7; }
+                    code { background: #333; }
+                }
+                h1 { font-size: 24px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+                h2 { font-size: 20px; margin-top: 30px; }
+                h3 { font-size: 17px; }
+                code { background: #f4f4f4; padding: 2px 5px; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; }
+                pre { background: #1e1e1e; padding: 15px; border-radius: 8px; overflow-x: auto; color: #d4d4d4; }
+                pre code { background: transparent; padding: 0; }
+                a { color: #007aff; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+                img { max-width: 100%; height: auto; border-radius: 8px; }
+                hr { border: 0; border-top: 1px solid #eee; margin: 30px 0; }
+                blockquote { border-left: 4px solid #eee; padding-left: 15px; color: #666; font-style: italic; }
+            </style>
+        </head>
+        <body>
+            \(html)
+        </body>
+        </html>
+        """
         
-        let attributedString = NSMutableAttributedString(string: content)
-        attributedString.addAttribute(.font, value: font, range: NSRange(location: 0, length: content.count))
+        webView.loadHTMLString(styledHTML, baseURL: Bundle.main.resourceURL)
+    }
+    
+    private func markdownToHTML(_ markdown: String) -> String {
+        var html = markdown
         
-        // Very basic "markdown" highlight
-        let lines = content.components(separatedBy: .newlines)
-        var location = 0
-        for line in lines {
-            let range = NSRange(location: location, length: line.count)
-            if line.hasPrefix("# ") {
-                attributedString.addAttribute(.font, value: titleFont, range: range)
-            } else if line.hasPrefix("## ") || line.hasPrefix("### ") {
-                attributedString.addAttribute(.font, value: boldFont, range: range)
-            } else if line.hasPrefix("---") {
-                attributedString.addAttribute(.foregroundColor, value: NSColor.separatorColor, range: range)
+        // Headers
+        html = html.replacingOccurrences(of: "^# (.*)$", with: "<h1>$1</h1>", options: .regularExpression, range: nil)
+        html = html.replacingOccurrences(of: "^## (.*)$", with: "<h2>$1</h2>", options: .regularExpression, range: nil)
+        html = html.replacingOccurrences(of: "^### (.*)$", with: "<h3>$1</h3>", options: .regularExpression, range: nil)
+        
+        // Bold
+        html = html.replacingOccurrences(of: "\\*\\*(.*?)\\*\\*", with: "<b>$1</b>", options: .regularExpression, range: nil)
+        
+        // Code
+        html = html.replacingOccurrences(of: "`([^`]+)`", with: "<code>$1</code>", options: .regularExpression, range: nil)
+        
+        // Links [text](url) - Simplified
+        html = html.replacingOccurrences(of: "\\[([^\\]]+)\\]\\(([^\\)]+)\\)", with: "<a href=\"$2\">$1</a>", options: .regularExpression, range: nil)
+        
+        // Horizontal rule
+        html = html.replacingOccurrences(of: "---", with: "<hr>", options: .regularExpression, range: nil)
+        
+        // Code blocks - Very simple approach
+        let codeRegex = try! NSRegularExpression(pattern: "```(?:bash|swift|shell)?\\n?([\\s\\S]*?)```", options: [])
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        let matches = codeRegex.matches(in: html, options: [], range: range).reversed()
+        
+        for match in matches {
+            if let r = Range(match.range(at: 1), in: html) {
+                let code = String(html[r]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let replacement = "<pre><code>\(code.replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;"))</code></pre>"
+                if let fullRange = Range(match.range, in: html) {
+                    html.replaceSubrange(fullRange, with: replacement)
+                }
             }
-            location += line.count + 1
         }
         
-        textView.textStorage?.setAttributedString(attributedString)
+        // Replace newlines with <br> except inside tags
+        // Actually, just wrapping paragraphs is better, but let's just do <br> for now for simplicity
+        // or just use pre-processing.
+        
+        return html
     }
 }
 
