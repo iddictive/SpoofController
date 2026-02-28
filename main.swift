@@ -1,6 +1,59 @@
 import Cocoa
 import Foundation
 
+// MARK: - Localization
+struct L10n {
+    static let shared = L10n()
+    let isRussian: Bool
+    
+    init() {
+        let lang = Locale.preferredLanguages.first ?? "en"
+        self.isRussian = lang.hasPrefix("ru")
+    }
+    
+    // Menu
+    var statusActive: String { isRussian ? "Статус: АКТИВЕН ✅" : "Status: ACTIVE ✅" }
+    var statusStopped: String { isRussian ? "Статус: ОСТАНОВЛЕН ❌" : "Status: STOPPED ❌" }
+    var start: String { isRussian ? "Запустить" : "Start" }
+    var stop: String { isRussian ? "Остановить" : "Stop" }
+    var settings: String { isRussian ? "Настройки..." : "Settings..." }
+    var logs: String { isRussian ? "Логи" : "Logs" }
+    var instructions: String { isRussian ? "Инструкции" : "Instructions" }
+    var helpTitle: String { isRussian ? "Инструкция по использованию" : "User Guide & Instructions" }
+    var quit: String { isRussian ? "Выйти" : "Quit" }
+    
+    // Settings Window
+    var settingsTitle: String { isRussian ? "Расширенные настройки" : "Advanced Settings" }
+    var binaryPath: String { isRussian ? "Путь к бинарнику:" : "Binary Path:" }
+    var binaryPlaceholder: String { isRussian ? "Например: /opt/homebrew/bin/spoofdpi" : "e.g. /opt/homebrew/bin/spoofdpi" }
+    var argumentsTitle: String { isRussian ? "Аргументы (флаги):" : "Arguments (Flags):" }
+    var manualArgsTitle: String { isRussian ? "Доп. аргументы:" : "Manual Arguments:" }
+    var manualArgsPlaceholder: String { isRussian ? "-p 8080 -window-size 10" : "-p 8080 -window-size 10" }
+    var autoLaunchTitle: String { isRussian ? "Автозагрузка:" : "Auto Launch:" }
+    var launchAtLogin: String { isRussian ? "Запускать при старте системы" : "Launch at system startup" }
+    var saveAndRestart: String { isRussian ? "Сохранить и Перезапустить" : "Save & Restart" }
+    
+    // Flag Descriptions
+    var descSystemProxy: String { isRussian ? "Использовать системный прокси" : "Use system-wide proxy" }
+    var descSilent: String { isRussian ? "Скрыть баннер при запуске" : "Suppress startup banner" }
+    var descIpv4Only: String { isRussian ? "Только IPv4 для DNS" : "IPv4 only for DNS" }
+    var descDebug: String { isRussian ? "Режим отладки (info/debug)" : "Debug mode (info/debug)" }
+    var descPolicyAuto: String { isRussian ? "Авто-детект заблокированных сайтов" : "Auto-detect blocked sites" }
+    
+    // Alerts/Installer
+    var dependencyMissing: String { isRussian ? "Отсутствует зависимость" : "Dependency Missing" }
+    var spoofDpiNeeded: String { isRussian ? "SpoofDPI не установлен. Установить через Homebrew?" : "SpoofDPI is not installed. Install via Homebrew?" }
+    var install: String { isRussian ? "Установить" : "Install" }
+    var installing: String { isRussian ? "Установка..." : "Installing..." }
+    var pleaseWaitBrew: String { isRussian ? "Пожалуйста, подождите. Установка через brew может занять минуту." : "Please wait while we install spoofdpi via brew. This might take a minute." }
+    var installComplete: String { isRussian ? "Установка завершена" : "Installation Complete" }
+    var installSuccess: String { isRussian ? "SpoofDPI успешно установлен. Запуск сервиса..." : "SpoofDPI has been installed successfully. Starting service..." }
+    var installFailed: String { isRussian ? "Ошибка установки" : "Installation Failed" }
+    var installManual: String { isRussian ? "Неизвестная ошибка. Установите вручную: 'brew install spoofdpi'" : "Unknown error. Please install manually: 'brew install spoofdpi'" }
+    var failedToStart: String { isRussian ? "Не удалось запустить" : "Failed to start" }
+    var preparingBypass: String { isRussian ? "Подготовка обхода... ⚡️" : "Preparing your bypass... ⚡️" }
+}
+
 // MARK: - Settings Store
 class SettingsStore {
     static let shared = SettingsStore()
@@ -14,6 +67,39 @@ class SettingsStore {
     var customArgs: String {
         get { defaults.string(forKey: "customArgs") ?? "--system-proxy" }
         set { defaults.set(newValue, forKey: "customArgs") }
+    }
+    
+    var selectedFlags: Set<String> {
+        let args = customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        return Set(args.filter { $0.hasPrefix("-") })
+    }
+    
+    func updateArgs(with flags: Set<String>, manual: String) {
+        let uniqueFlags = flags.joined(separator: " ")
+        customArgs = "\(uniqueFlags) \(manual)".trimmingCharacters(in: .whitespaces)
+    }
+    
+    var launchAtLogin: Bool {
+        get { defaults.bool(forKey: "launchAtLogin") }
+        set {
+            defaults.set(newValue, forKey: "launchAtLogin")
+            toggleLaunchAtLogin(newValue)
+        }
+    }
+    
+    private func toggleLaunchAtLogin(_ enabled: Bool) {
+        let appPath = Bundle.main.bundlePath
+        let script: String
+        if enabled {
+            script = "tell application \"System Events\" to make login item at end with properties {path:\"\(appPath)\", hidden:false, name:\"SpoofController\"}"
+        } else {
+            script = "tell application \"System Events\" to delete (every login item whose name is \"SpoofController\")"
+        }
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        try? process.run()
     }
     
     private func autoDetectBinaryPath() -> String {
@@ -32,10 +118,12 @@ class SpoofManager {
     private(set) var isRunning = false
     private var outputPipe: Pipe?
     var logHandler: ((String) -> Void)?
+    private(set) var logBuffer = ""
     
     func start(completion: @escaping (Bool, String?) -> Void) {
         if isRunning { stop() }
         isRunning = false
+        logBuffer = ""
         
         let binaryPath = SettingsStore.shared.binaryPath
         // Check if it exists at the preferred path
@@ -60,6 +148,11 @@ class SpoofManager {
             let data = handle.availableData
             if let str = String(data: data, encoding: .utf8), !str.isEmpty {
                 DispatchQueue.main.async {
+                    self?.logBuffer += str
+                    // Keep buffer reasonable
+                    if self?.logBuffer.count ?? 0 > 100000 {
+                        self?.logBuffer = String(self?.logBuffer.suffix(50000) ?? "")
+                    }
                     self?.logHandler?(str)
                 }
             }
@@ -122,49 +215,130 @@ class SpoofManager {
 }
 
 // MARK: - Windows
+struct ArgumentOption {
+    let flag: String
+    let description: String
+}
+
 class SettingsWindowController: NSWindowController {
     var pathField: NSTextField!
-    var argsField: NSTextField!
+    var manualArgsField: NSTextField!
+    var checkboxes: [NSButton] = []
+    
+    let options = [
+        ArgumentOption(flag: "--system-proxy", description: L10n.shared.descSystemProxy),
+        ArgumentOption(flag: "--silent", description: L10n.shared.descSilent),
+        ArgumentOption(flag: "--dns-ipv4-only", description: L10n.shared.descIpv4Only),
+        ArgumentOption(flag: "--debug", description: L10n.shared.descDebug),
+        ArgumentOption(flag: "--policy-auto", description: L10n.shared.descPolicyAuto)
+    ]
     
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: 450, height: 460),
             styleMask: [.titled, .closable],
             backing: .buffered, defer: false)
         window.center()
-        window.title = "Settings"
+        window.title = L10n.shared.settingsTitle
         self.init(window: window)
         setupUI()
     }
     
     func setupUI() {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 450, height: 460))
         window?.contentView = view
         
-        let pathLabel = NSTextField(labelWithString: "Binary Path:")
-        pathLabel.frame = NSRect(x: 20, y: 150, width: 100, height: 20)
+        var currentY: CGFloat = 420
+        
+        // 1. Binary Path
+        let pathLabel = NSTextField(labelWithString: L10n.shared.binaryPath)
+        pathLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        pathLabel.frame = NSRect(x: 20, y: currentY, width: 200, height: 20)
         view.addSubview(pathLabel)
+        currentY -= 30
         
-        pathField = NSTextField(frame: NSRect(x: 120, y: 150, width: 260, height: 22))
+        pathField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 410, height: 24))
         pathField.stringValue = SettingsStore.shared.binaryPath
+        pathField.placeholderString = L10n.shared.binaryPlaceholder
         view.addSubview(pathField)
+        currentY -= 45
         
-        let argsLabel = NSTextField(labelWithString: "Arguments:")
-        argsLabel.frame = NSRect(x: 20, y: 110, width: 100, height: 20)
-        view.addSubview(argsLabel)
+        // 2. Predefined Flags
+        let flagsLabel = NSTextField(labelWithString: L10n.shared.argumentsTitle)
+        flagsLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        flagsLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
+        view.addSubview(flagsLabel)
+        currentY -= 25
         
-        argsField = NSTextField(frame: NSRect(x: 120, y: 110, width: 260, height: 22))
-        argsField.stringValue = SettingsStore.shared.customArgs
-        view.addSubview(argsField)
+        let selected = SettingsStore.shared.selectedFlags
         
-        let saveButton = NSButton(title: "Save & Restart", target: self, action: #selector(save))
-        saveButton.frame = NSRect(x: 275, y: 20, width: 110, height: 32)
+        for option in options {
+            let cb = NSButton(checkboxWithTitle: option.flag, target: nil, action: nil)
+            cb.frame = NSRect(x: 20, y: currentY, width: 150, height: 20)
+            cb.state = selected.contains(option.flag) ? .on : .off
+            view.addSubview(cb)
+            checkboxes.append(cb)
+            
+            let desc = NSTextField(labelWithString: "— \(option.description)")
+            desc.font = .systemFont(ofSize: 11)
+            desc.textColor = .secondaryLabelColor
+            desc.frame = NSRect(x: 170, y: currentY, width: 260, height: 18)
+            view.addSubview(desc)
+            
+            currentY -= 22
+        }
+        currentY -= 15
+        
+        // 3. Manual Args
+        let manualLabel = NSTextField(labelWithString: L10n.shared.manualArgsTitle)
+        manualLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        manualLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
+        view.addSubview(manualLabel)
+        currentY -= 30
+        
+        manualArgsField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 410, height: 24))
+        // Filter out predefined flags to show only manual ones
+        let allArgs = SettingsStore.shared.customArgs.components(separatedBy: .whitespaces)
+        let manual = allArgs.filter { arg in !options.contains { $0.flag == arg } }.joined(separator: " ")
+        manualArgsField.stringValue = manual.trimmingCharacters(in: .whitespaces)
+        manualArgsField.placeholderString = L10n.shared.manualArgsPlaceholder
+        view.addSubview(manualArgsField)
+        currentY -= 45
+        
+        // 4. Launch at Login
+        let loginLabel = NSTextField(labelWithString: L10n.shared.autoLaunchTitle)
+        loginLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        loginLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
+        view.addSubview(loginLabel)
+        currentY -= 25
+        
+        let loginCheckbox = NSButton(checkboxWithTitle: L10n.shared.launchAtLogin, target: self, action: #selector(toggleLoginItem))
+        loginCheckbox.frame = NSRect(x: 20, y: currentY, width: 410, height: 20)
+        loginCheckbox.state = SettingsStore.shared.launchAtLogin ? .on : .off
+        view.addSubview(loginCheckbox)
+        
+        // 5. Save Button
+        let saveButton = NSButton(title: L10n.shared.saveAndRestart, target: self, action: #selector(save))
+        saveButton.frame = NSRect(x: 220, y: 20, width: 210, height: 32)
+        saveButton.bezelStyle = .rounded
         view.addSubview(saveButton)
     }
     
+    @objc func toggleLoginItem(_ sender: NSButton) {
+        SettingsStore.shared.launchAtLogin = (sender.state == .on)
+    }
+    
     @objc func save() {
+        var flags = Set<String>()
+        for (index, cb) in checkboxes.enumerated() {
+            if cb.state == .on {
+                flags.insert(options[index].flag)
+            }
+        }
+        
         SettingsStore.shared.binaryPath = pathField.stringValue
-        SettingsStore.shared.customArgs = argsField.stringValue
+        SettingsStore.shared.updateArgs(with: flags, manual: manualArgsField.stringValue)
+        
         if SpoofManager.shared.isRunning {
             SpoofManager.shared.stop()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -185,9 +359,13 @@ class LogWindowController: NSWindowController {
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered, defer: false)
         window.center()
-        window.title = "Current Logs"
+        window.title = L10n.shared.logs
         self.init(window: window)
         setupUI()
+        
+        // Load existing logs
+        appendLog(SpoofManager.shared.logBuffer)
+        
         SpoofManager.shared.logHandler = { [weak self] text in
             self?.appendLog(text)
         }
@@ -196,12 +374,22 @@ class LogWindowController: NSWindowController {
         let scrollView = NSScrollView(frame: window!.contentView!.bounds)
         scrollView.hasVerticalScroller = true
         scrollView.autoresizingMask = [.width, .height]
-        textView = NSTextView(frame: scrollView.bounds)
+        
+        let contentSize = scrollView.contentSize
+        textView = NSTextView(frame: NSRect(x: 0, y: 0, width: contentSize.width, height: contentSize.height))
+        textView.minSize = NSSize(width: 0.0, height: contentSize.height)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        
         textView.isEditable = false
         textView.backgroundColor = .black
-        textView.textColor = .green
         textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        textView.autoresizingMask = [.width]
+        
+        textView.textContainer?.containerSize = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+        
         scrollView.documentView = textView
         window?.contentView?.addSubview(scrollView)
     }
@@ -212,6 +400,76 @@ class LogWindowController: NSWindowController {
         ])
         textView.textStorage?.append(attrStr)
         textView.scrollToEndOfDocument(nil)
+    }
+}
+
+class HelpWindowController: NSWindowController {
+    var textView: NSTextView!
+    
+    convenience init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 650, height: 500),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered, defer: false)
+        window.center()
+        window.title = L10n.shared.helpTitle
+        self.init(window: window)
+        setupUI()
+        loadReadme()
+    }
+    
+    func setupUI() {
+        let scrollView = NSScrollView(frame: window!.contentView!.bounds)
+        scrollView.hasVerticalScroller = true
+        scrollView.autoresizingMask = [.width, .height]
+        
+        let contentSize = scrollView.contentSize
+        textView = NSTextView(frame: NSRect(x: 0, y: 0, width: contentSize.width, height: contentSize.height))
+        textView.minSize = NSSize(width: 0.0, height: contentSize.height)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.isEditable = false
+        textView.textContainerInset = NSSize(width: 20, height: 20)
+        
+        textView.textContainer?.containerSize = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+        
+        scrollView.documentView = textView
+        window?.contentView?.addSubview(scrollView)
+    }
+    
+    func loadReadme() {
+        guard let path = Bundle.main.path(forResource: "README", ofType: "md"),
+              let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            textView.string = L10n.shared.isRussian ? "Инструкция недоступна." : "Manual not available."
+            return
+        }
+        
+        let font = NSFont.systemFont(ofSize: 13)
+        let boldFont = NSFont.boldSystemFont(ofSize: 14)
+        let titleFont = NSFont.boldSystemFont(ofSize: 18)
+        
+        let attributedString = NSMutableAttributedString(string: content)
+        attributedString.addAttribute(.font, value: font, range: NSRange(location: 0, length: content.count))
+        
+        // Very basic "markdown" highlight
+        let lines = content.components(separatedBy: .newlines)
+        var location = 0
+        for line in lines {
+            let range = NSRange(location: location, length: line.count)
+            if line.hasPrefix("# ") {
+                attributedString.addAttribute(.font, value: titleFont, range: range)
+            } else if line.hasPrefix("## ") || line.hasPrefix("### ") {
+                attributedString.addAttribute(.font, value: boldFont, range: range)
+            } else if line.hasPrefix("---") {
+                attributedString.addAttribute(.foregroundColor, value: NSColor.separatorColor, range: range)
+            }
+            location += line.count + 1
+        }
+        
+        textView.textStorage?.setAttributedString(attributedString)
     }
 }
 
@@ -257,7 +515,7 @@ class LoadingWindowController: NSWindowController {
         label.alignment = .center
         container.addSubview(label)
         
-        let sublabel = NSTextField(labelWithString: "Preparing your bypass... ⚡️")
+        let sublabel = NSTextField(labelWithString: L10n.shared.preparingBypass)
         sublabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         sublabel.textColor = .secondaryLabelColor
         sublabel.frame = NSRect(x: 0, y: 35, width: 340, height: 20)
@@ -294,6 +552,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var settingsWindow: SettingsWindowController?
     var logWindow: LogWindowController?
+    var helpWindow: HelpWindowController?
     var loadingWindow: LoadingWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -319,8 +578,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         self?.showInstallAlert()
                     } else {
                         let alert = NSAlert()
-                        alert.messageText = "Failed to start"
-                        alert.informativeText = error ?? "Check settings."
+                        alert.messageText = L10n.shared.failedToStart
+                        alert.informativeText = error ?? (L10n.shared.isRussian ? "Проверьте настройки." : "Check settings.")
                         alert.runModal()
                         self?.showSettings()
                     }
@@ -331,10 +590,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showInstallAlert() {
         let alert = NSAlert()
-        alert.messageText = "Dependency Missing"
-        alert.informativeText = "SpoofDPI is not installed. Would you like to install it via Homebrew?"
-        alert.addButton(withTitle: "Install")
-        alert.addButton(withTitle: "Quit")
+        alert.messageText = L10n.shared.dependencyMissing
+        alert.informativeText = L10n.shared.spoofDpiNeeded
+        alert.addButton(withTitle: L10n.shared.install)
+        alert.addButton(withTitle: L10n.shared.quit)
         
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
@@ -347,22 +606,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func performInstallation() {
         // Show a simple alert during installation
         let info = NSAlert()
-        info.messageText = "Installing..."
-        info.informativeText = "Please wait while we install spoofdpi via brew. This might take a minute."
+        info.messageText = L10n.shared.installing
+        info.informativeText = L10n.shared.pleaseWaitBrew
         info.addButton(withTitle: "OK")
         info.runModal()
         
         SpoofManager.shared.install { [weak self] success, error in
             if success {
                 let successAlert = NSAlert()
-                successAlert.messageText = "Installation Complete"
-                successAlert.informativeText = "SpoofDPI has been installed successfully. Starting service..."
+                successAlert.messageText = L10n.shared.installComplete
+                successAlert.informativeText = L10n.shared.installSuccess
                 successAlert.runModal()
                 self?.attemptStart()
             } else {
                 let failAlert = NSAlert()
-                failAlert.messageText = "Installation Failed"
-                failAlert.informativeText = error ?? "Unknown error. Please install manually: 'brew install spoofdpi'"
+                failAlert.messageText = L10n.shared.installFailed
+                failAlert.informativeText = error ?? L10n.shared.installManual
                 failAlert.runModal()
             }
         }
@@ -414,14 +673,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setupMenu() {
         let menu = NSMenu()
-        let status = SpoofManager.shared.isRunning ? "Status: ACTIVE ✅" : "Status: STOPPED ❌"
+        let status = SpoofManager.shared.isRunning ? L10n.shared.statusActive : L10n.shared.statusStopped
         menu.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: SpoofManager.shared.isRunning ? "Stop" : "Start", action: #selector(toggle), keyEquivalent: "t"))
-        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: "View Logs", action: #selector(showLogs), keyEquivalent: "l"))
+        menu.addItem(NSMenuItem(title: SpoofManager.shared.isRunning ? L10n.shared.stop : L10n.shared.start, action: #selector(toggle), keyEquivalent: "t"))
+        menu.addItem(NSMenuItem(title: L10n.shared.settings, action: #selector(showSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem(title: L10n.shared.logs, action: #selector(showLogs), keyEquivalent: "l"))
+        menu.addItem(NSMenuItem(title: L10n.shared.instructions, action: #selector(showHelp), keyEquivalent: "h"))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: L10n.shared.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem?.menu = menu
     }
 
@@ -432,8 +692,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             SpoofManager.shared.start { [weak self] success, error in
                 if !success {
                     let alert = NSAlert()
-                    alert.messageText = "Failed to start"
-                    alert.informativeText = error ?? "Unknown error"
+                    alert.messageText = L10n.shared.failedToStart
+                    alert.informativeText = error ?? (L10n.shared.isRussian ? "Проверьте настройки." : "Check settings.")
                     alert.runModal()
                 }
                 self?.refreshUI()
@@ -442,8 +702,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         refreshUI()
     }
 
-    @objc func showSettings() { if settingsWindow == nil { settingsWindow = SettingsWindowController() }; NSApp.activate(ignoringOtherApps: true); settingsWindow?.showWindow(nil) }
-    @objc func showLogs() { if logWindow == nil { logWindow = LogWindowController() }; NSApp.activate(ignoringOtherApps: true); logWindow?.showWindow(nil) }
+    @objc func showSettings() { if settingsWindow == nil { settingsWindow = SettingsWindowController() }; NSApp.activate(ignoringOtherApps: true); settingsWindow?.showWindow(nil as Any?) }
+    @objc func showLogs() { if logWindow == nil { logWindow = LogWindowController() }; NSApp.activate(ignoringOtherApps: true); logWindow?.showWindow(nil as Any?) }
+    @objc func showHelp() { if helpWindow == nil { helpWindow = HelpWindowController() }; NSApp.activate(ignoringOtherApps: true); helpWindow?.showWindow(nil as Any?) }
     func applicationWillTerminate(_ notification: Notification) { SpoofManager.shared.stop() }
 }
 

@@ -28,6 +28,12 @@
 2. **Install**: Drag to `Applications`.
 3. **Run**: Opens with auto-setup.
 
+### VPN Compatibility
+To use SpoofController alongside a VPN (like Shadowrocket, AdGuard, etc.):
+1. **Disable `Use system-wide proxy`** in SpoofController Settings.
+2. Configure your VPN to use `127.0.0.1:8080` (or your custom port) as the **upstream (parent) proxy**.
+3. This allows the VPN to handle routing while SpoofController handles DPI bypassing.
+
 ### Uninstall
 ```bash
 curl -sL https://raw.githubusercontent.com/iddictive/SpoofController/main/scripts/uninstall.sh | bash
@@ -52,6 +58,12 @@ curl -sL https://raw.githubusercontent.com/iddictive/SpoofController/main/script
 1. **Скачать**: `.dmg` со страницы [Релизов](https://github.com/iddictive/SpoofController/releases).
 2. **Установить**: Перетянуть в `Applications`.
 3. **Запуск**: Готов к работе сразу.
+
+### Совместимость с VPN
+Чтобы использовать SpoofController вместе с VPN (Shadowrocket, AdGuard и т.д.):
+1. **Отключите `Использовать системный прокси`** в настройках SpoofController.
+2. В самом VPN-клиенте укажите `127.0.0.1:8080` (или ваш порт) в качестве **родительского (upstream) прокси**.
+3. Таким образом VPN будет отвечать за маршрутизацию, а SpoofController — за обход DPI.
 
 ### Удаление
 ```bash

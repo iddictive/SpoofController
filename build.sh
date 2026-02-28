@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 APP_NAME="SpoofController"
 APP_BUNDLE="${APP_NAME}.app"
 
@@ -15,6 +16,7 @@ swiftc -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" main.swift -framework Cocoa
 # Copy Info.plist and Icon
 cp Info.plist "${APP_BUNDLE}/Contents/Info.plist"
 cp assets/AppIcon.icns "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
+cp README.md "${APP_BUNDLE}/Contents/Resources/README.md"
 
 echo "Build complete: ${APP_BUNDLE}"
 
