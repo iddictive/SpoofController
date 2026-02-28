@@ -1,10 +1,10 @@
-<p align="center">
+# SpoofController ⚡️
+
+<p align="left">
   <img src="assets/banner.png" alt="SpoofController Banner" width="800">
 </p>
 
-# SpoofController v1.1.2 ⚡️
-
-<p align="center">
+<p align="left">
   <a href="#english">English</a> • <a href="#russian">Русский</a>
 </p>
 
