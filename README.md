@@ -28,8 +28,7 @@ Native macOS Menu Bar GUI for `spoofdpi`.
 
 ### Uninstall
 ```bash
-# Clean removal of app and config
-bash scripts/uninstall.sh
+curl -sL https://raw.githubusercontent.com/iddictive/SpoofController/main/scripts/uninstall.sh | bash
 ```
 
 ---
@@ -52,8 +51,7 @@ bash scripts/uninstall.sh
 
 ### Удаление
 ```bash
-# Полная очистка приложения и настроек
-bash scripts/uninstall.sh
+curl -sL https://raw.githubusercontent.com/iddictive/SpoofController/main/scripts/uninstall.sh | bash
 ```
 
 ---

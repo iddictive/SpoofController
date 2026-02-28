@@ -25,7 +25,7 @@ osascript -e "tell application \"System Events\" to delete login item \"${APP_NA
 
 # 4. Clean up user data
 echo "Cleaning up user defaults and logs..."
-defaults delete com.iddictive.${APP_NAME} 2>/dev/null
+defaults delete com.antigravity.${APP_NAME} 2>/dev/null
 rm -rf ~/Library/Logs/${APP_NAME} 2>/dev/null
 
 echo "Uninstallation complete. 🧹"
