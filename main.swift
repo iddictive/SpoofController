@@ -610,6 +610,7 @@ class LoadingWindowController: NSWindowController {
         sublabel.textColor = .secondaryLabelColor
         sublabel.frame = NSRect(x: 0, y: 35, width: 340, height: 20)
         sublabel.alignment = .center
+        self.sublabel = sublabel
         container.addSubview(sublabel)
         
         let indicator = NSProgressIndicator(frame: NSRect(x: 100, y: 15, width: 140, height: 20))
@@ -620,6 +621,11 @@ class LoadingWindowController: NSWindowController {
         
         // This ensures the shadow updates to match the layer-backed rounded view
         window?.invalidateShadow()
+    }
+    func updateStatus(_ text: String) {
+        DispatchQueue.main.async {
+            self.sublabel?.stringValue = text
+        }
     }
     func showWithFade() {
         window?.alphaValue = 0
@@ -635,6 +641,7 @@ class LoadingWindowController: NSWindowController {
             window?.animator().alphaValue = 0
         }, completionHandler: completion)
     }
+    private var sublabel: NSTextField?
 }
 
 // MARK: - App Delegate
@@ -694,25 +701,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func performInstallation() {
-        // Show a simple alert during installation
-        let info = NSAlert()
-        info.messageText = L10n.shared.installing
-        info.informativeText = L10n.shared.pleaseWaitBrew
-        info.addButton(withTitle: "OK")
-        info.runModal()
+        if loadingWindow == nil {
+            loadingWindow = LoadingWindowController()
+        }
+        loadingWindow?.updateStatus(L10n.shared.installing)
+        loadingWindow?.showWithFade()
         
         SpoofManager.shared.install { [weak self] success, error in
-            if success {
-                let successAlert = NSAlert()
-                successAlert.messageText = L10n.shared.installComplete
-                successAlert.informativeText = L10n.shared.installSuccess
-                successAlert.runModal()
-                self?.attemptStart()
-            } else {
-                let failAlert = NSAlert()
-                failAlert.messageText = L10n.shared.installFailed
-                failAlert.informativeText = error ?? L10n.shared.installManual
-                failAlert.runModal()
+            self?.loadingWindow?.closeWithFade {
+                self?.loadingWindow = nil
+                self?.refreshUI()
+                
+                if success {
+                    let successAlert = NSAlert()
+                    successAlert.messageText = L10n.shared.installComplete
+                    successAlert.informativeText = L10n.shared.installSuccess
+                    successAlert.runModal()
+                    self?.attemptStart()
+                } else {
+                    let failAlert = NSAlert()
+                    failAlert.messageText = L10n.shared.installFailed
+                    failAlert.informativeText = error ?? L10n.shared.installManual
+                    failAlert.runModal()
+                }
             }
         }
     }
