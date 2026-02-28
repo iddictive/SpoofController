@@ -478,45 +478,81 @@ class HelpWindowController: NSWindowController {
     }
     
     private func markdownToHTML(_ markdown: String) -> String {
-        var html = markdown
+        var result = ""
+        let lines = markdown.components(separatedBy: .newlines)
+        var inCodeBlock = false
+        var codeContent = ""
         
-        // Headers
-        html = html.replacingOccurrences(of: "^# (.*)$", with: "<h1>$1</h1>", options: .regularExpression, range: nil)
-        html = html.replacingOccurrences(of: "^## (.*)$", with: "<h2>$1</h2>", options: .regularExpression, range: nil)
-        html = html.replacingOccurrences(of: "^### (.*)$", with: "<h3>$1</h3>", options: .regularExpression, range: nil)
-        
-        // Bold
-        html = html.replacingOccurrences(of: "\\*\\*(.*?)\\*\\*", with: "<b>$1</b>", options: .regularExpression, range: nil)
-        
-        // Code
-        html = html.replacingOccurrences(of: "`([^`]+)`", with: "<code>$1</code>", options: .regularExpression, range: nil)
-        
-        // Links [text](url) - Simplified
-        html = html.replacingOccurrences(of: "\\[([^\\]]+)\\]\\(([^\\)]+)\\)", with: "<a href=\"$2\">$1</a>", options: .regularExpression, range: nil)
-        
-        // Horizontal rule
-        html = html.replacingOccurrences(of: "---", with: "<hr>", options: .regularExpression, range: nil)
-        
-        // Code blocks - Very simple approach
-        let codeRegex = try! NSRegularExpression(pattern: "```(?:bash|swift|shell)?\\n?([\\s\\S]*?)```", options: [])
-        let range = NSRange(html.startIndex..<html.endIndex, in: html)
-        let matches = codeRegex.matches(in: html, options: [], range: range).reversed()
-        
-        for match in matches {
-            if let r = Range(match.range(at: 1), in: html) {
-                let code = String(html[r]).trimmingCharacters(in: .whitespacesAndNewlines)
-                let replacement = "<pre><code>\(code.replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;"))</code></pre>"
-                if let fullRange = Range(match.range, in: html) {
-                    html.replaceSubrange(fullRange, with: replacement)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            
+            // Code Blocks
+            if trimmed.hasPrefix("```") {
+                if inCodeBlock {
+                    result += "<pre><code>\(codeContent.trimmingCharacters(in: .whitespacesAndNewlines))</code></pre>\n"
+                    codeContent = ""
+                    inCodeBlock = false
+                } else {
+                    inCodeBlock = true
                 }
+                continue
             }
+            
+            if inCodeBlock {
+                codeContent += line.replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;") + "\n"
+                continue
+            }
+            
+            // Empty lines
+            if trimmed.isEmpty {
+                result += "<br>\n"
+                continue
+            }
+            
+            // Headers
+            if line.hasPrefix("# ") {
+                result += "<h1>\(processInline(String(line.dropFirst(2))))</h1>\n"
+                continue
+            }
+            if line.hasPrefix("## ") {
+                result += "<h2>\(processInline(String(line.dropFirst(3))))</h2>\n"
+                continue
+            }
+            if line.hasPrefix("### ") {
+                result += "<h3>\(processInline(String(line.dropFirst(4))))</h3>\n"
+                continue
+            }
+            
+            // Horizontal Rule
+            if trimmed == "---" {
+                result += "<hr>\n"
+                continue
+            }
+            
+            // Lists (simple)
+            if trimmed.hasPrefix("- ") {
+                result += "<li>\(processInline(String(trimmed.dropFirst(2))))</li>\n"
+                continue
+            }
+            
+            // Paragraph
+            result += "<p>\(processInline(line))</p>\n"
         }
         
-        // Replace newlines with <br> except inside tags
-        // Actually, just wrapping paragraphs is better, but let's just do <br> for now for simplicity
-        // or just use pre-processing.
-        
-        return html
+        return result
+    }
+    
+    private func processInline(_ text: String) -> String {
+        var processed = text
+        // Bold
+        processed = processed.replacingOccurrences(of: "\\*\\*(.*?)\\*\\*", with: "<b>$1</b>", options: .regularExpression, range: nil)
+        // Inline Code
+        processed = processed.replacingOccurrences(of: "`([^`]+)`", with: "<code>$1</code>", options: .regularExpression, range: nil)
+        // Links
+        processed = processed.replacingOccurrences(of: "\\[([^\\]]+)\\]\\(([^\\)]+)\\)", with: "<a href=\"$2\">$1</a>", options: .regularExpression, range: nil)
+        // HTML tags preservation for those <a> in README
+        // (Actually they'll just work if we don't escape them here)
+        return processed
     }
 }
 
