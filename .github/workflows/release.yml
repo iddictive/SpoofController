@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build App
+        run: bash build.sh
+
+      - name: Create DMG
+        run: bash scripts/create_dmg.sh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SpoofController.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
