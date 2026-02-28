@@ -41,6 +41,9 @@ struct L10n {
     var windowSizeTitle: String { isRussian ? "Размер фрагментации (Window Size):" : "Fragmentation (Window Size):" }
     var windowSizePlaceholder: String { isRussian ? "По умолч: 0 (Выкл)" : "Default: 0 (Off)" }
     var windowSizeInstruction: String { isRussian ? "Измените, если блочит HTTPS." : "Adjust if HTTPS is blocked." }
+    
+    var portTitle: String { isRussian ? "Локальный порт:" : "Local Port:" }
+    var portPlaceholder: String { isRussian ? "По умолч: 8080" : "Default: 8080" }
 
     
     // Flag Descriptions
@@ -90,12 +93,17 @@ class SettingsStore {
         set { defaults.set(newValue, forKey: "windowSize") }
     }
     
+    var localPort: String {
+        get { defaults.string(forKey: "localPort") ?? "8080" }
+        set { defaults.set(newValue, forKey: "localPort") }
+    }
+    
     var selectedFlags: Set<String> {
         let args = customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
         return Set(args.filter { $0.hasPrefix("-") && !$0.hasPrefix("--default-ttl") && !$0.hasPrefix("--window-size") })
     }
     
-    func updateArgs(with flags: Set<String>, manual: String, ttl: String, windowSize: String) {
+    func updateArgs(with flags: Set<String>, manual: String, ttl: String, windowSize: String, port: String) {
         var uniqueFlags = flags.joined(separator: " ")
         if let ttlInt = Int(ttl), ttlInt > 0 {
             uniqueFlags += " --default-ttl \(ttlInt)"
@@ -103,19 +111,23 @@ class SettingsStore {
         if let windowInt = Int(windowSize), windowInt > 0 {
             uniqueFlags += " --window-size \(windowInt)"
         }
-        // Strict filtering for manual arguments: remove any flags we already handle + their values if they are numeric
+        
+        let portToUse = port.trimmingCharacters(in: .whitespaces)
+        if !portToUse.isEmpty && portToUse != "8080" {
+            uniqueFlags += " --listen-addr 127.0.0.1:\(portToUse)"
+        }
+        
+        // Strict filtering for manual arguments
         let manualParts = manual.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
         var cleanedParts: [String] = []
         var i = 0
         while i < manualParts.count {
             let part = manualParts[i]
-            if part == "--default-ttl" || part == "--window-size" {
+            if part == "--default-ttl" || part == "--window-size" || part == "--listen-addr" {
                 i += 2 // Skip flag and value
             } else if flags.contains(part) {
                 i += 1 // Skip known flag
             } else if Int(part) != nil {
-                // If it's a standalone number, only keep it if it's NOT a value of a known flag (heuristic)
-                // For now, let's just skip it if it's likely a leaked TTL/WindowSize
                 i += 1 
             } else {
                 cleanedParts.append(part)
@@ -291,6 +303,7 @@ class SettingsWindowController: NSWindowController {
     var manualArgsField: NSTextField!
     var ttlField: NSTextField!
     var windowSizeField: NSTextField!
+    var portField: NSTextField!
     var checkboxes: [NSButton] = []
     
     let options = [
@@ -367,6 +380,18 @@ class SettingsWindowController: NSWindowController {
         ttlInstr.font = .systemFont(ofSize: 11); ttlInstr.textColor = .secondaryLabelColor
         ttlInstr.frame = NSRect(x: 220, y: currentY, width: 220, height: 18)
         view.addSubview(ttlInstr)
+        currentY -= 32
+        
+        // Port Setting
+        let pLabel = NSTextField(labelWithString: L10n.shared.portTitle)
+        pLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        pLabel.frame = NSRect(x: 20, y: currentY, width: 110, height: 20)
+        view.addSubview(pLabel)
+        
+        portField = NSTextField(frame: NSRect(x: 135, y: currentY - 2, width: 80, height: 22))
+        portField.stringValue = SettingsStore.shared.localPort
+        portField.placeholderString = L10n.shared.portPlaceholder
+        view.addSubview(portField)
         currentY -= 35
         
         let wsLabel = NSTextField(labelWithString: L10n.shared.windowSizeTitle)
@@ -441,7 +466,8 @@ class SettingsWindowController: NSWindowController {
         SettingsStore.shared.binaryPath = pathField.stringValue
         SettingsStore.shared.defaultTTL = ttlField.stringValue.trimmingCharacters(in: .whitespaces)
         SettingsStore.shared.windowSize = windowSizeField.stringValue.trimmingCharacters(in: .whitespaces)
-        SettingsStore.shared.updateArgs(with: flags, manual: manualArgsField.stringValue, ttl: SettingsStore.shared.defaultTTL, windowSize: SettingsStore.shared.windowSize)
+        SettingsStore.shared.localPort = portField.stringValue.trimmingCharacters(in: .whitespaces)
+        SettingsStore.shared.updateArgs(with: flags, manual: manualArgsField.stringValue, ttl: SettingsStore.shared.defaultTTL, windowSize: SettingsStore.shared.windowSize, port: SettingsStore.shared.localPort)
         
         if SpoofManager.shared.isRunning {
             SpoofManager.shared.stop()
