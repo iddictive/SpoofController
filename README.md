@@ -2,7 +2,7 @@
   <img src="assets/banner.png" alt="SpoofController Banner" width="800">
 </p>
 
-# SpoofController v1.0 ⚡️
+# SpoofController v1.1.2 ⚡️
 
 <p align="center">
   <a href="#english">English</a> • <a href="#russian">Русский</a>
@@ -14,7 +14,7 @@
 ## English 🇺🇸
 ### Professional macOS GUI for `spoofdpi` — Bypass DPI & Remove Throttling
 
-**SpoofController** is a user-friendly macOS application built to bypass DPI censorship, unblock websites, and remove ISP throttling.
+**SpoofController** is a lightweight, high-performance macOS application built to bypass DPI censorship, unblock websites, and remove ISP throttling.
 
 > Love sharing internet from your phone but hate it when your ISP throttles the speed? Many solutions have been tried over the years. This one is simply convenient for Mac users. If you're on Windows... well, my condolences. 😉
 
@@ -24,8 +24,8 @@ It is a **GoodbyeDPI Mac alternative** that restores access to YouTube and block
 - **Control**: Start/stop from Menu Bar.
 - **Status**: Visual indicator (🟢/🔴).
 - **Auto-Install**: Handles `spoofdpi` dependency via Homebrew.
-- **Logs**: Built-in log viewer.
-- **Customizable**: Set binary path and arguments.
+- **Ultra-Lightweight**: Zero-log silent operation for 0.1% CPU and minimal RAM usage.
+- **Clean State**: Automatically kills orphan processes to prevent conflicts.
 - **Advanced Settings**: Configure TTL and Window Size values for specialized bypass scenarios.
 
 ### Setup
@@ -50,7 +50,7 @@ curl -sL https://raw.githubusercontent.com/iddictive/SpoofController/main/script
 ## Русский 🇷🇺
 ### Нативный GUI для `spoofdpi` — Обход DPI и снятие ограничений скорости
 
-**SpoofController** — приложение для macOS на базе `spoofdpi`, которое обходит блокировки провайдеров (DPI) и убирает замедление трафика. 
+**SpoofController** — легкое и производительное приложение для macOS на базе `spoofdpi`, которое обходит блокировки провайдеров (DPI) и убирает замедление трафика. 
 
 > Любите раздавать интернет с телефона, но провайдер режет скорость? Давно было много разных решений, но это — просто удобное для тех, у кого Mac. Для тех, у кого Windows — соболезную. 😉
 
@@ -60,8 +60,8 @@ curl -sL https://raw.githubusercontent.com/iddictive/SpoofController/main/script
 - **Управление**: Старт/стоп из менюбара.
 - **Статус**: Цветной индикатор (🟢/🔴).
 - **Авто-установка**: Сам проверит и поставит `spoofdpi`.
-- **Логи**: Окно мониторинга процесса.
-- **Гибкость**: Настройка бинарника и аргументов.
+- **Максимальная легкость**: Работает бесшумно без записи логов, потребляя ~0.1% CPU и минимум RAM.
+- **Чистый запуск**: Автоматически завершает старые процессы `spoofdpi` для избежания конфликтов.
 - **Расширенные настройки**: Установка значений TTL и Window Size для специфических сценариев обхода.
 
 ### Установка
