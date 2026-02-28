@@ -14,7 +14,11 @@
 ## English 🇺🇸
 ### Professional macOS GUI for `spoofdpi` — Bypass DPI & Remove Throttling
 
-**SpoofController** is a user-friendly macOS application built to bypass DPI censorship, unblock websites, and remove ISP throttling. It is a **GoodbyeDPI Mac alternative** that restores access to YouTube and blocked resources without speed loss. No terminal or command line knowledge required.
+**SpoofController** is a user-friendly macOS application built to bypass DPI censorship, unblock websites, and remove ISP throttling.
+
+> Love sharing internet from your phone but hate it when your ISP throttles the speed? Many solutions have been tried over the years. This one is simply convenient for Mac users. If you're on Windows... well, my condolences. 😉
+
+It is a **GoodbyeDPI Mac alternative** that restores access to YouTube and blocked resources without speed loss. No terminal or command line knowledge required.
 
 ### Features
 - **Control**: Start/stop from Menu Bar.
@@ -45,7 +49,11 @@ curl -sL https://raw.githubusercontent.com/iddictive/SpoofController/main/script
 ## Русский 🇷🇺
 ### Нативный GUI для `spoofdpi` — Обход DPI и снятие ограничений скорости
 
-**SpoofController** — приложение для macOS на базе `spoofdpi`, которое обходит блокировки провайдеров (DPI) и убирает замедление трафика. **Альтернатива GoodbyeDPI для Mac**, возвращает доступ к YouTube и заблокированным ресурсам одним кликом. Работает без терминала.
+**SpoofController** — приложение для macOS на базе `spoofdpi`, которое обходит блокировки провайдеров (DPI) и убирает замедление трафика. 
+
+> Любите раздавать интернет с телефона, но провайдер режет скорость? Давно было много разных решений, но это — просто удобное для тех, у кого Mac. Для тех, у кого Windows — соболезную. 😉
+
+**Альтернатива GoodbyeDPI для Mac**, возвращает доступ к YouTube и заблокированным ресурсам одним кликом. Работает без терминала.
 
 ### Возможности
 - **Управление**: Старт/стоп из менюбара.
