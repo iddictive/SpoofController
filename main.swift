@@ -53,6 +53,7 @@ struct L10n {
     var installManual: String { isRussian ? "Неизвестная ошибка. Установите вручную: 'brew install spoofdpi'" : "Unknown error. Please install manually: 'brew install spoofdpi'" }
     var failedToStart: String { isRussian ? "Не удалось запустить" : "Failed to start" }
     var preparingBypass: String { isRussian ? "Подготовка обхода... ⚡️" : "Preparing your bypass... ⚡️" }
+    var cancel: String { isRussian ? "Отмена" : "Cancel" }
 }
 
 // MARK: - Settings Store
@@ -116,6 +117,7 @@ class SettingsStore {
 class SpoofManager {
     static let shared = SpoofManager()
     private var process: Process?
+    private var installProcess: Process?
     private(set) var isRunning = false
     private var outputPipe: Pipe?
     var logHandler: ((String) -> Void)?
@@ -188,11 +190,13 @@ class SpoofManager {
         }
         
         process.arguments = ["install", "spoofdpi"]
+        self.installProcess = process
         
         do {
             try process.run()
-            process.terminationHandler = { proc in
+            process.terminationHandler = { [weak self] proc in
                 DispatchQueue.main.async {
+                    self?.installProcess = nil
                     if proc.terminationStatus == 0 {
                         completion(true, nil)
                     } else {
@@ -201,8 +205,14 @@ class SpoofManager {
                 }
             }
         } catch {
+            self.installProcess = nil
             completion(false, error.localizedDescription)
         }
+    }
+
+    func cancelInstall() {
+        installProcess?.terminate()
+        installProcess = nil
     }
 
     func stop() {
@@ -619,13 +629,23 @@ class LoadingWindowController: NSWindowController {
         indicator.startAnimation(nil)
         container.addSubview(indicator)
         
+        cancelButton = NSButton(title: L10n.shared.cancel, target: self, action: #selector(cancelClicked))
+        cancelButton?.frame = NSRect(x: 120, y: 5, width: 100, height: 20)
+        cancelButton?.bezelStyle = .recessed
+        cancelButton?.isHidden = true // Hidden by default (starting)
+        container.addSubview(cancelButton!)
+        
         // This ensures the shadow updates to match the layer-backed rounded view
         window?.invalidateShadow()
     }
-    func updateStatus(_ text: String) {
+    func updateStatus(_ text: String, showCancel: Bool = false) {
         DispatchQueue.main.async {
             self.sublabel?.stringValue = text
+            self.cancelButton?.isHidden = !showCancel
         }
+    }
+    @objc func cancelClicked() {
+        cancelHandler?()
     }
     func showWithFade() {
         window?.alphaValue = 0
@@ -641,7 +661,9 @@ class LoadingWindowController: NSWindowController {
             window?.animator().alphaValue = 0
         }, completionHandler: completion)
     }
+    var cancelHandler: (() -> Void)?
     private var sublabel: NSTextField?
+    private var cancelButton: NSButton?
 }
 
 // MARK: - App Delegate
@@ -704,7 +726,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if loadingWindow == nil {
             loadingWindow = LoadingWindowController()
         }
-        loadingWindow?.updateStatus(L10n.shared.installing)
+        loadingWindow?.updateStatus(L10n.shared.installing, showCancel: true)
+        loadingWindow?.cancelHandler = { [weak self] in
+            SpoofManager.shared.cancelInstall()
+            self?.loadingWindow?.closeWithFade {
+                self?.loadingWindow = nil
+                self?.refreshUI()
+            }
+        }
         loadingWindow?.showWithFade()
         
         SpoofManager.shared.install { [weak self] success, error in
@@ -718,7 +747,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     successAlert.informativeText = L10n.shared.installSuccess
                     successAlert.runModal()
                     self?.attemptStart()
-                } else {
+                } else if error != nil { // Don't show alert if cancelled (error is nil on process termination?)
+                    // Actually terminationStatus is non-zero so we check if it was cancelled
                     let failAlert = NSAlert()
                     failAlert.messageText = L10n.shared.installFailed
                     failAlert.informativeText = error ?? L10n.shared.installManual
