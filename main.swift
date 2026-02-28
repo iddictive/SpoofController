@@ -443,10 +443,10 @@ class HelpWindowController: NSWindowController {
                 body {
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                     font-size: 14px;
-                    line-height: 1.6;
+                    line-height: 1.5;
                     color: #333;
-                    padding: 30px;
-                    max-width: 800px;
+                    padding: 20px 40px;
+                    max-width: 850px;
                     margin: 0 auto;
                     background-color: transparent;
                 }
@@ -454,18 +454,20 @@ class HelpWindowController: NSWindowController {
                     body { color: #eee; }
                     a { color: #4dabf7; }
                     code { background: #333; }
+                    pre { background: #222; }
                 }
-                h1 { font-size: 24px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-                h2 { font-size: 20px; margin-top: 30px; }
-                h3 { font-size: 17px; }
-                code { background: #f4f4f4; padding: 2px 5px; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; }
-                pre { background: #1e1e1e; padding: 15px; border-radius: 8px; overflow-x: auto; color: #d4d4d4; }
-                pre code { background: transparent; padding: 0; }
+                h1 { font-size: 24px; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-top: 10px; }
+                h2 { font-size: 19px; margin-top: 25px; margin-bottom: 10px; }
+                h3 { font-size: 16px; margin-top: 20px; margin-bottom: 8px; }
+                p, li { margin: 6px 0; }
+                code { background: #f4f4f4; padding: 2px 5px; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; font-size: 0.9em; }
+                pre { background: #f8f9fa; padding: 12px; border-radius: 8px; overflow-x: auto; border: 1px solid #eee; }
+                pre code { background: transparent; padding: 0; color: inherit; }
                 a { color: #007aff; text-decoration: none; }
                 a:hover { text-decoration: underline; }
-                img { max-width: 100%; height: auto; border-radius: 8px; }
-                hr { border: 0; border-top: 1px solid #eee; margin: 30px 0; }
-                blockquote { border-left: 4px solid #eee; padding-left: 15px; color: #666; font-style: italic; }
+                img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 10px auto; }
+                hr { border: 0; border-top: 1px solid #eee; margin: 20px 0; }
+                blockquote { border-left: 4px solid #eee; padding-left: 15px; color: #666; font-style: italic; margin: 15px 0; }
             </style>
         </head>
         <body>
@@ -505,7 +507,12 @@ class HelpWindowController: NSWindowController {
             
             // Empty lines
             if trimmed.isEmpty {
-                result += "<br>\n"
+                continue
+            }
+            
+            // HTML tags (Preserve banner and other manual HTML)
+            if trimmed.hasPrefix("<") {
+                result += line + "\n"
                 continue
             }
             

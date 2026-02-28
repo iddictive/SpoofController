@@ -13,10 +13,12 @@ mkdir -p "${APP_BUNDLE}/Contents/Resources"
 # Compile code directly into bundle
 swiftc -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" main.swift -framework Cocoa -framework Foundation
 
-# Copy Info.plist and Icon
+# Copy Info.plist, Icon, and Assets
 cp Info.plist "${APP_BUNDLE}/Contents/Info.plist"
 cp assets/AppIcon.icns "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
 cp README.md "${APP_BUNDLE}/Contents/Resources/README.md"
+mkdir -p "${APP_BUNDLE}/Contents/Resources/assets"
+cp assets/banner.png "${APP_BUNDLE}/Contents/Resources/assets/banner.png"
 
 echo "Build complete: ${APP_BUNDLE}"
 
