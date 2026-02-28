@@ -103,7 +103,11 @@ class SettingsStore {
         if let windowInt = Int(windowSize), windowInt > 0 {
             uniqueFlags += " --window-size \(windowInt)"
         }
-        customArgs = "\(uniqueFlags) \(manual)".trimmingCharacters(in: .whitespaces)
+        let cleanedManual = manual.components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty && !flags.contains($0) && !$0.hasPrefix("--default-ttl") && !$0.hasPrefix("--window-size") }
+            .filter { Int($0) == nil } // Extra safety to avoid numbers leaking into manual
+            .joined(separator: " ")
+        customArgs = "\(uniqueFlags) \(cleanedManual)".trimmingCharacters(in: .whitespaces)
     }
     
     var launchAtLogin: Bool {
@@ -374,9 +378,21 @@ class SettingsWindowController: NSWindowController {
         currentY -= 30
         
         manualArgsField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 410, height: 24))
-        let allArgs = SettingsStore.shared.customArgs.components(separatedBy: .whitespaces)
-        let manual = allArgs.filter { arg in !options.contains { $0.flag == arg } && !arg.hasPrefix("--default-ttl") && !arg.hasPrefix("--window-size") }.joined(separator: " ")
-        manualArgsField.stringValue = manual.trimmingCharacters(in: .whitespaces)
+        let allArgs = SettingsStore.shared.customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        var manualParts: [String] = []
+        var i = 0
+        while i < allArgs.count {
+            let arg = allArgs[i]
+            if arg == "--default-ttl" || arg == "--window-size" {
+                i += 2 // skip flag AND its value
+            } else if options.contains(where: { $0.flag == arg }) {
+                i += 1 // skip the flag itself
+            } else {
+                manualParts.append(arg)
+                i += 1
+            }
+        }
+        manualArgsField.stringValue = manualParts.joined(separator: " ")
         manualArgsField.placeholderString = L10n.shared.manualArgsPlaceholder
         view.addSubview(manualArgsField)
         currentY -= 45
