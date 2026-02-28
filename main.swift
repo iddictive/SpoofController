@@ -130,7 +130,14 @@ class SettingsStore {
     }
     
     private func autoDetectBinaryPath() -> String {
-        let paths = ["/opt/homebrew/bin/spoofdpi", "/usr/local/bin/spoofdpi", "/usr/bin/spoofdpi"]
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+        let paths = [
+            "/opt/homebrew/bin/spoofdpi",
+            "/usr/local/bin/spoofdpi",
+            "/usr/bin/spoofdpi",
+            "\(homeDir)/.spoof-dpi/bin/spoofdpi",
+            "\(homeDir)/.spoof-dpi/bin/spoof-dpi"
+        ]
         for path in paths {
             if FileManager.default.fileExists(atPath: path) { return path }
         }
@@ -189,13 +196,19 @@ class SpoofManager {
     }
     
     func install(completion: @escaping (Bool, String?) -> Void) {
+        let brewPaths = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+        let brewPath = brewPaths.first { FileManager.default.fileExists(atPath: $0) }
+        
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/brew")
-        if !FileManager.default.fileExists(atPath: "/opt/homebrew/bin/brew") {
-            process.executableURL = URL(fileURLWithPath: "/usr/local/bin/brew")
+        if let bp = brewPath {
+            process.executableURL = URL(fileURLWithPath: bp)
+            process.arguments = ["install", "spoofdpi"]
+        } else {
+            // Fallback to official shell script if no brew
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-c", "curl -fsSL https://raw.githubusercontent.com/xvzc/spoofdpi/main/install.sh | bash"]
         }
         
-        process.arguments = ["install", "spoofdpi"]
         self.installProcess = process
         
         do {
@@ -206,7 +219,7 @@ class SpoofManager {
                     if proc.terminationStatus == 0 {
                         completion(true, nil)
                     } else {
-                        completion(false, "Homebrew failed with exit code \(proc.terminationStatus)")
+                        completion(false, "Installation failed with exit code \(proc.terminationStatus)")
                     }
                 }
             }
