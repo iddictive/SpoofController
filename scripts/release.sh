@@ -26,9 +26,9 @@ git push origin "${VERSION}"
 # 4. Create GitHub Release (if gh cli is available)
 if command -v gh &> /dev/null; then
     echo "Creating GitHub Release..."
-    gh release create "${VERSION}" SpoofController.dmg --title "Release ${VERSION}" --notes "Check README for changelog."
+    gh release create "${VERSION}" DPIKiller.dmg --title "Release ${VERSION}" --notes "Check README for changelog."
 else
-    echo "GitHub CLI (gh) not found. Please upload SpoofController.dmg manually to the GitHub Release page."
+    echo "GitHub CLI (gh) not found. Please upload DPIKiller.dmg manually to the GitHub Release page."
 fi
 
 echo "Done! 🏎️💨"

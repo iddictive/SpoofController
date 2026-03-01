@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-APP_NAME="SpoofController"
+APP_NAME="DPIKiller"
 APP_BUNDLE="${APP_NAME}.app"
 
 # Clean old build

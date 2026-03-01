@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>SpoofController</string>
+    <string>DPIKiller</string>
     <key>CFBundleIdentifier</key>
-    <string>com.antigravity.SpoofController</string>
+    <string>com.antigravity.DPIKiller</string>
     <key>CFBundleName</key>
-    <string>SpoofController</string>
+    <string>DPI Killer</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

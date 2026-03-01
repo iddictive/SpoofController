@@ -1,7 +1,7 @@
 #!/bin/bash
 # scripts/create_dmg.sh
 
-APP_NAME="SpoofController"
+APP_NAME="DPIKiller"
 APP_BUNDLE="${APP_NAME}.app"
 DMG_NAME="${APP_NAME}.dmg"
 

@@ -181,9 +181,9 @@ class SettingsStore {
         let appPath = Bundle.main.bundlePath
         let script: String
         if enabled {
-            script = "tell application \"System Events\" to make login item at end with properties {path:\"\(appPath)\", hidden:false, name:\"SpoofController\"}"
+            script = "tell application \"System Events\" to make login item at end with properties {path:\"\(appPath)\", hidden:false, name:\"DPI Killer\"}"
         } else {
-            script = "tell application \"System Events\" to delete (every login item whose name is \"SpoofController\")"
+            script = "tell application \"System Events\" to delete (every login item whose name is \"DPI Killer\")"
         }
         
         let process = Process()
@@ -209,8 +209,8 @@ class SettingsStore {
 }
 
 // MARK: - Spoof Manager
-class SpoofManager {
-    static let shared = SpoofManager()
+class DPIKillerManager {
+    static let shared = DPIKillerManager()
     private(set) var process: Process?
     private var installProcess: Process?
     private(set) var isRunning = false
@@ -547,10 +547,10 @@ class SettingsWindowController: NSWindowController {
                                         dnsMode: SettingsStore.shared.dnsMode,
                                         dnsHttpsUrl: SettingsStore.shared.dnsHttpsUrl)
         
-        if SpoofManager.shared.isRunning {
-            SpoofManager.shared.stop()
+        if DPIKillerManager.shared.isRunning {
+            DPIKillerManager.shared.stop()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                SpoofManager.shared.start { _, _ in 
+                DPIKillerManager.shared.start { _, _ in 
                     (NSApp.delegate as? AppDelegate)?.refreshUI()
                 }
             }
@@ -636,7 +636,7 @@ class LoadingWindowController: NSWindowController {
         let visualEffect = NSVisualEffectView(frame: container.bounds); visualEffect.blendingMode = .behindWindow; visualEffect.material = .underWindowBackground; visualEffect.state = .active
         container.addSubview(visualEffect)
         if let icon = NSApp.applicationIconImage { let iconView = NSImageView(frame: NSRect(x: 130, y: 85, width: 80, height: 80)); iconView.image = icon; container.addSubview(iconView) }
-        let label = NSTextField(labelWithString: "SpoofController"); label.font = .systemFont(ofSize: 22, weight: .semibold); label.frame = NSRect(x: 0, y: 55, width: 340, height: 30); label.alignment = .center; container.addSubview(label)
+        let label = NSTextField(labelWithString: "DPI Killer"); label.font = .systemFont(ofSize: 22, weight: .semibold); label.frame = NSRect(x: 0, y: 55, width: 340, height: 30); label.alignment = .center; container.addSubview(label)
         let sublabel = NSTextField(labelWithString: L10n.shared.preparingBypass); sublabel.font = .systemFont(ofSize: 13, weight: .medium); sublabel.textColor = .secondaryLabelColor
         sublabel.frame = NSRect(x: 0, y: 35, width: 340, height: 20); sublabel.alignment = .center; self.sublabel = sublabel; container.addSubview(sublabel)
         let indicator = NSProgressIndicator(frame: NSRect(x: 100, y: 15, width: 140, height: 20)); indicator.style = .bar; indicator.isIndeterminate = true; indicator.startAnimation(nil); container.addSubview(indicator)
@@ -669,7 +669,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func attemptStart() {
-        SpoofManager.shared.start { [weak self] success, error in
+        DPIKillerManager.shared.start { [weak self] success, error in
             self?.loadingWindow?.closeWithFade {
                 self?.loadingWindow = nil; self?.refreshUI()
                 if !success {
@@ -692,9 +692,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func performInstallation() {
         if loadingWindow == nil { loadingWindow = LoadingWindowController() }
         loadingWindow?.updateStatus(L10n.shared.installing, showCancel: true)
-        loadingWindow?.cancelHandler = { [weak self] in SpoofManager.shared.cancelInstall(); self?.loadingWindow?.closeWithFade { self?.loadingWindow = nil; self?.refreshUI() } }
+        loadingWindow?.cancelHandler = { [weak self] in DPIKillerManager.shared.cancelInstall(); self?.loadingWindow?.closeWithFade { self?.loadingWindow = nil; self?.refreshUI() } }
         loadingWindow?.showWithFade()
-        SpoofManager.shared.install { [weak self] success, error in
+        DPIKillerManager.shared.install { [weak self] success, error in
             self?.loadingWindow?.closeWithFade {
                 self?.loadingWindow = nil; self?.refreshUI()
                 if success { let s = NSAlert(); s.messageText = L10n.shared.installComplete; s.informativeText = L10n.shared.installSuccess; NSApp.activate(ignoringOtherApps: true); s.runModal(); self?.attemptStart() }
@@ -713,7 +713,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             if let button = self.statusItem?.button {
-                let isRunning = SpoofManager.shared.isRunning
+                let isRunning = DPIKillerManager.shared.isRunning
                 if self.iconCache[isRunning] == nil { self.iconCache[isRunning] = self.createStatusIcon(isRunning: isRunning) }
                 button.image = self.iconCache[isRunning]; button.imagePosition = .imageOnly
             }
@@ -730,10 +730,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setupMenu() {
-        let menu = NSMenu(); let status = SpoofManager.shared.isRunning ? L10n.shared.statusActive : L10n.shared.statusStopped
+        let menu = NSMenu(); let status = DPIKillerManager.shared.isRunning ? L10n.shared.statusActive : L10n.shared.statusStopped
         menu.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: SpoofManager.shared.isRunning ? L10n.shared.stop : L10n.shared.start, action: #selector(toggle), keyEquivalent: "t"))
+        menu.addItem(NSMenuItem(title: DPIKillerManager.shared.isRunning ? L10n.shared.stop : L10n.shared.start, action: #selector(toggle), keyEquivalent: "t"))
         menu.addItem(NSMenuItem(title: L10n.shared.settings, action: #selector(showSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: L10n.shared.instructions, action: #selector(showHelp), keyEquivalent: "h"))
         menu.addItem(NSMenuItem.separator())
@@ -742,8 +742,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func toggle() {
-        if SpoofManager.shared.isRunning { SpoofManager.shared.stop() }
-        else { SpoofManager.shared.start { [weak self] s, e in if !s { let a = NSAlert(); a.messageText = L10n.shared.failedToStart; a.informativeText = e ?? "Check settings."; NSApp.activate(ignoringOtherApps: true); a.runModal() }; self?.refreshUI() } }
+        if DPIKillerManager.shared.isRunning { DPIKillerManager.shared.stop() }
+        else { DPIKillerManager.shared.start { [weak self] s, e in if !s { let a = NSAlert(); a.messageText = L10n.shared.failedToStart; a.informativeText = e ?? "Check settings."; NSApp.activate(ignoringOtherApps: true); a.runModal() }; self?.refreshUI() } }
         refreshUI()
     }
 
@@ -751,8 +751,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showHelp() { if helpWindow == nil { helpWindow = HelpWindowController() }; NSApp.activate(ignoringOtherApps: true); helpWindow?.showWindow(nil) }
     
     func applicationWillTerminate(_ notification: Notification) {
-        if let p = SpoofManager.shared.process { p.terminate(); p.waitUntilExit() }
-        SpoofManager.shared.stop()
+        if let p = DPIKillerManager.shared.process { p.terminate(); p.waitUntilExit() }
+        DPIKillerManager.shared.stop()
     }
 
     private func setupSignalHandlers() {
@@ -760,7 +760,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for sig in signals {
             signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-            source.setEventHandler { SpoofManager.shared.stop(); exit(0) }
+            source.setEventHandler { DPIKillerManager.shared.stop(); exit(0) }
             source.resume()
         }
     }
