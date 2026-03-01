@@ -45,6 +45,11 @@ struct L10n {
     var portTitle: String { isRussian ? "Локальный порт:" : "Local Port:" }
     var portPlaceholder: String { isRussian ? "По умолч: 8080" : "Default: 8080" }
 
+    var dnsTitle: String { isRussian ? "Настройки DNS:" : "DNS Settings:" }
+    var dnsAddrTitle: String { isRussian ? "DNS Адрес:" : "DNS Address:" }
+    var dnsModeTitle: String { isRussian ? "Режим DNS:" : "DNS Mode:" }
+    var dnsHttpsTitle: String { isRussian ? "DoH URL:" : "DoH URL:" }
+
     
     // Flag Descriptions
     var descSystemProxy: String { isRussian ? "Использовать системный прокси" : "Use system-wide proxy" }
@@ -97,13 +102,28 @@ class SettingsStore {
         get { defaults.string(forKey: "localPort") ?? "8080" }
         set { defaults.set(newValue, forKey: "localPort") }
     }
+
+    var dnsAddr: String {
+        get { defaults.string(forKey: "dnsAddr") ?? "8.8.8.8:53" }
+        set { defaults.set(newValue, forKey: "dnsAddr") }
+    }
+
+    var dnsMode: String {
+        get { defaults.string(forKey: "dnsMode") ?? "udp" }
+        set { defaults.set(newValue, forKey: "dnsMode") }
+    }
+
+    var dnsHttpsUrl: String {
+        get { defaults.string(forKey: "dnsHttpsUrl") ?? "https://dns.google/dns-query" }
+        set { defaults.set(newValue, forKey: "dnsHttpsUrl") }
+    }
     
     var selectedFlags: Set<String> {
         let args = customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-        return Set(args.filter { $0.hasPrefix("-") && !$0.hasPrefix("--default-ttl") && !$0.hasPrefix("--window-size") })
+        return Set(args.filter { $0.hasPrefix("-") && !$0.hasPrefix("--default-ttl") && !$0.hasPrefix("--window-size") && !$0.hasPrefix("--listen-addr") && !$0.hasPrefix("--dns-addr") && !$0.hasPrefix("--dns-mode") && !$0.hasPrefix("--dns-https-url") })
     }
     
-    func updateArgs(with flags: Set<String>, manual: String, ttl: String, windowSize: String, port: String) {
+    func updateArgs(with flags: Set<String>, manual: String, ttl: String, windowSize: String, port: String, dnsAddr: String, dnsMode: String, dnsHttpsUrl: String) {
         var uniqueFlags = flags.joined(separator: " ")
         if let ttlInt = Int(ttl), ttlInt > 0 {
             uniqueFlags += " --default-ttl \(ttlInt)"
@@ -116,6 +136,18 @@ class SettingsStore {
         if !portToUse.isEmpty && portToUse != "8080" {
             uniqueFlags += " --listen-addr 127.0.0.1:\(portToUse)"
         }
+
+        if !dnsAddr.isEmpty && dnsAddr != "8.8.8.8:53" {
+            uniqueFlags += " --dns-addr \(dnsAddr)"
+        }
+
+        if !dnsMode.isEmpty && dnsMode != "udp" {
+            uniqueFlags += " --dns-mode \(dnsMode)"
+        }
+
+        if dnsMode == "doh" && !dnsHttpsUrl.isEmpty && dnsHttpsUrl != "https://dns.google/dns-query" {
+            uniqueFlags += " --dns-https-url \(dnsHttpsUrl)"
+        }
         
         // Strict filtering for manual arguments
         let manualParts = manual.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
@@ -123,7 +155,7 @@ class SettingsStore {
         var i = 0
         while i < manualParts.count {
             let part = manualParts[i]
-            if part == "--default-ttl" || part == "--window-size" || part == "--listen-addr" {
+            if part == "--default-ttl" || part == "--window-size" || part == "--listen-addr" || part == "--dns-addr" || part == "--dns-mode" || part == "--dns-https-url" {
                 i += 2 // Skip flag and value
             } else if flags.contains(part) {
                 i += 1 // Skip known flag
@@ -304,6 +336,9 @@ class SettingsWindowController: NSWindowController {
     var ttlField: NSTextField!
     var windowSizeField: NSTextField!
     var portField: NSTextField!
+    var dnsAddrField: NSTextField!
+    var dnsModeButton: NSPopUpButton!
+    var dnsHttpsUrlField: NSTextField!
     var checkboxes: [NSButton] = []
     
     let options = [
@@ -316,7 +351,7 @@ class SettingsWindowController: NSWindowController {
     
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 450, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 450, height: 750),
             styleMask: [.titled, .closable],
             backing: .buffered, defer: false)
         window.center()
@@ -326,10 +361,10 @@ class SettingsWindowController: NSWindowController {
     }
     
     func setupUI() {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 450, height: 600))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 450, height: 750))
         window?.contentView = view
         
-        var currentY: CGFloat = 550
+        var currentY: CGFloat = 700
         
         let pathLabel = NSTextField(labelWithString: L10n.shared.binaryPath)
         pathLabel.font = .systemFont(ofSize: 13, weight: .bold)
@@ -409,7 +444,39 @@ class SettingsWindowController: NSWindowController {
         wsInstr.font = .systemFont(ofSize: 11); wsInstr.textColor = .secondaryLabelColor
         wsInstr.frame = NSRect(x: 105, y: currentY + 2, width: 330, height: 18)
         view.addSubview(wsInstr)
-        currentY -= 35
+        currentY -= 40
+        
+        // DNS Section
+        let dnsLabel = NSTextField(labelWithString: L10n.shared.dnsTitle)
+        dnsLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        dnsLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
+        view.addSubview(dnsLabel)
+        currentY -= 30
+        
+        let daLabel = NSTextField(labelWithString: L10n.shared.dnsAddrTitle)
+        daLabel.frame = NSRect(x: 20, y: currentY, width: 100, height: 20)
+        view.addSubview(daLabel)
+        dnsAddrField = NSTextField(frame: NSRect(x: 120, y: currentY - 2, width: 150, height: 22))
+        dnsAddrField.stringValue = SettingsStore.shared.dnsAddr
+        view.addSubview(dnsAddrField)
+        currentY -= 30
+        
+        let dmLabel = NSTextField(labelWithString: L10n.shared.dnsModeTitle)
+        dmLabel.frame = NSRect(x: 20, y: currentY, width: 100, height: 20)
+        view.addSubview(dmLabel)
+        dnsModeButton = NSPopUpButton(frame: NSRect(x: 120, y: currentY - 2, width: 100, height: 22), pullsDown: false)
+        dnsModeButton.addItems(withTitles: ["udp", "doh", "sys"])
+        dnsModeButton.selectItem(withTitle: SettingsStore.shared.dnsMode)
+        view.addSubview(dnsModeButton)
+        currentY -= 30
+        
+        let dhLabel = NSTextField(labelWithString: L10n.shared.dnsHttpsTitle)
+        dhLabel.frame = NSRect(x: 20, y: currentY, width: 100, height: 20)
+        view.addSubview(dhLabel)
+        dnsHttpsUrlField = NSTextField(frame: NSRect(x: 120, y: currentY - 2, width: 310, height: 22))
+        dnsHttpsUrlField.stringValue = SettingsStore.shared.dnsHttpsUrl
+        view.addSubview(dnsHttpsUrlField)
+        currentY -= 40
         
         let manualLabel = NSTextField(labelWithString: L10n.shared.manualArgsTitle)
         manualLabel.font = .systemFont(ofSize: 13, weight: .bold)
@@ -423,10 +490,12 @@ class SettingsWindowController: NSWindowController {
         var i = 0
         while i < allArgs.count {
             let arg = allArgs[i]
-            if arg == "--default-ttl" || arg == "--window-size" {
+            if arg == "--default-ttl" || arg == "--window-size" || arg == "--listen-addr" || arg == "--dns-addr" || arg == "--dns-mode" || arg == "--dns-https-url" {
                 i += 2 // skip flag AND its value
             } else if options.contains(where: { $0.flag == arg }) {
                 i += 1 // skip the flag itself
+            } else if Int(arg) != nil {
+                i += 1 // skip standalone numbers (likely leaked values)
             } else {
                 manualParts.append(arg)
                 i += 1
@@ -467,7 +536,16 @@ class SettingsWindowController: NSWindowController {
         SettingsStore.shared.defaultTTL = ttlField.stringValue.trimmingCharacters(in: .whitespaces)
         SettingsStore.shared.windowSize = windowSizeField.stringValue.trimmingCharacters(in: .whitespaces)
         SettingsStore.shared.localPort = portField.stringValue.trimmingCharacters(in: .whitespaces)
-        SettingsStore.shared.updateArgs(with: flags, manual: manualArgsField.stringValue, ttl: SettingsStore.shared.defaultTTL, windowSize: SettingsStore.shared.windowSize, port: SettingsStore.shared.localPort)
+        SettingsStore.shared.dnsAddr = dnsAddrField.stringValue.trimmingCharacters(in: .whitespaces)
+        SettingsStore.shared.dnsMode = dnsModeButton.titleOfSelectedItem ?? "udp"
+        SettingsStore.shared.dnsHttpsUrl = dnsHttpsUrlField.stringValue.trimmingCharacters(in: .whitespaces)
+        SettingsStore.shared.updateArgs(with: flags, manual: manualArgsField.stringValue, 
+                                        ttl: SettingsStore.shared.defaultTTL, 
+                                        windowSize: SettingsStore.shared.windowSize, 
+                                        port: SettingsStore.shared.localPort,
+                                        dnsAddr: SettingsStore.shared.dnsAddr,
+                                        dnsMode: SettingsStore.shared.dnsMode,
+                                        dnsHttpsUrl: SettingsStore.shared.dnsHttpsUrl)
         
         if SpoofManager.shared.isRunning {
             SpoofManager.shared.stop()
