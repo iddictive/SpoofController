@@ -29,7 +29,7 @@ It is a **GoodbyeDPI Mac alternative** that restores access to YouTube and block
 - **Advanced Settings**: Configure TTL and Window Size values for specialized bypass scenarios.
 
 ### Setup
-1. **Download**: Get `.dmg` from [Releases](https://github.com/iddictive/DPIKiller/releases).
+1. **Download**: Get `.dmg` from [Releases](https://github.com/iddictive/DPI-Killer/releases).
 2. **Install**: Drag to `Applications`.
 3. **Run**: Opens with auto-setup.
 
@@ -41,7 +41,7 @@ To use DPI Killer alongside a VPN (like Shadowrocket, AdGuard, etc.):
 
 ### Uninstall
 ```bash
-curl -sL https://raw.githubusercontent.com/iddictive/DPIKiller/main/scripts/uninstall.sh | bash
+curl -sL https://raw.githubusercontent.com/iddictive/DPI-Killer/main/scripts/uninstall.sh | bash
 ```
 
 ---
@@ -59,13 +59,13 @@ curl -sL https://raw.githubusercontent.com/iddictive/DPIKiller/main/scripts/unin
 ### Возможности
 - **Управление**: Старт/стоп из менюбара.
 - **Статус**: Цветной индикатор (🟢/🔴).
-- **Авто-установка**: Сам проверит и поставит `spoofdpi`.
+- **Auto-установка**: Сам проверит и поставит `spoofdpi`.
 - **Максимальная легкость**: Работает бесшумно без записи логов, потребляя ~0.1% CPU и минимум RAM.
 - **Чистый запуск**: Автоматически завершает старые процессы `spoofdpi` для избежания конфликтов.
 - **Расширенные настройки**: Установка значений TTL и Window Size для специфических сценариев обхода.
 
 ### Установка
-1. **Скачать**: `.dmg` со страницы [Релизов](https://github.com/iddictive/DPIKiller/releases).
+1. **Скачать**: `.dmg` со страницы [Релизов](https://github.com/iddictive/DPI-Killer/releases).
 2. **Установить**: Перетянуть в `Applications`.
 3. **Запуск**: Готов к работе сразу.
 
@@ -77,7 +77,7 @@ curl -sL https://raw.githubusercontent.com/iddictive/DPIKiller/main/scripts/unin
 
 ### Удаление
 ```bash
-curl -sL https://raw.githubusercontent.com/iddictive/DPIKiller/main/scripts/uninstall.sh | bash
+curl -sL https://raw.githubusercontent.com/iddictive/DPI-Killer/main/scripts/uninstall.sh | bash
 ```
 
 ---
