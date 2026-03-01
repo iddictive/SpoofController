@@ -1,4 +1,4 @@
-# SpoofController ⚡️
+# DPI Killer⚡️
 
 <p align="left">
   <img src="assets/banner.png" alt="SpoofController Banner" width="800">
