@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-# DPI Killer ⚡️
-=======
 # DPI Killer⚡️
->>>>>>> origin/main
 
 <p align="left">
   <img src="assets/banner.png" alt="DPI Killer Banner" width="800">
