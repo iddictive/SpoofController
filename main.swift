@@ -218,14 +218,16 @@ class SettingsStore {
     }
     
     private func autoDetectBinaryPath() -> String {
+        let bundlePath = Bundle.main.path(forResource: "spoofdpi-binary", ofType: nil, inDirectory: "MacOS")
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
         let paths = [
+            bundlePath,
             "/opt/homebrew/bin/spoofdpi",
             "/usr/local/bin/spoofdpi",
             "/usr/bin/spoofdpi",
             "\(homeDir)/.spoof-dpi/bin/spoofdpi",
             "\(homeDir)/.spoof-dpi/bin/spoof-dpi"
-        ]
+        ].compactMap { $0 }
         for path in paths {
             if FileManager.default.fileExists(atPath: path) { return path }
         }
@@ -425,6 +427,7 @@ class DPIKillerManager {
         isRunning = false
         
         let binaryPath = SettingsStore.shared.binaryPath
+        print("[Manager] Starting with binary: \(binaryPath)")
         if !FileManager.default.fileExists(atPath: binaryPath) {
             completion(false, "NOT_INSTALLED")
             return

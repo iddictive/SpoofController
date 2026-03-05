@@ -20,6 +20,12 @@ cp README.md "${APP_BUNDLE}/Contents/Resources/README.md"
 mkdir -p "${APP_BUNDLE}/Contents/Resources/assets"
 cp assets/banner.png "${APP_BUNDLE}/Contents/Resources/assets/banner.png"
 
+# Copy patched spoofdpi binary
+if [ -f "spoofdpi-patched" ]; then
+    cp spoofdpi-patched "${APP_BUNDLE}/Contents/MacOS/spoofdpi-binary"
+    chmod +x "${APP_BUNDLE}/Contents/MacOS/spoofdpi-binary"
+fi
+
 echo "Build complete: ${APP_BUNDLE}"
 
 if [[ "$1" == "--dmg" ]]; then
