@@ -1016,8 +1016,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if !success {
                     if error == "NOT_INSTALLED" { self?.showInstallAlert() }
                     else {
-                        let alert = NSAlert(); alert.messageText = L10n.shared.failedToStart; alert.informativeText = error ?? (L10n.shared.isRussian ? "Проверьте настройки." : "Check settings.")
-                        NSApp.activate(ignoringOtherApps: true); alert.runModal(); self?.showSettings()
+                        let alert = NSAlert()
+                        alert.messageText = L10n.shared.failedToStart
+                        alert.informativeText = error ?? (L10n.shared.isRussian ? "Проверьте настройки." : "Check settings.")
+                        NSApp.activate(ignoringOtherApps: true)
+                        alert.beginSheetModal(for: self?.settingsWindow?.window ?? NSWindow()) { _ in
+                            self?.showSettings()
+                        }
                     }
                 }
             }
@@ -1025,9 +1030,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showInstallAlert() {
-        let alert = NSAlert(); alert.messageText = L10n.shared.dependencyMissing; alert.informativeText = L10n.shared.spoofDpiNeeded
-        alert.addButton(withTitle: L10n.shared.install); alert.addButton(withTitle: L10n.shared.quit)
-        NSApp.activate(ignoringOtherApps: true); if alert.runModal() == .alertFirstButtonReturn { performInstallation() } else { NSApp.terminate(nil) }
+        let alert = NSAlert()
+        alert.messageText = L10n.shared.dependencyMissing
+        alert.informativeText = L10n.shared.spoofDpiNeeded
+        alert.addButton(withTitle: L10n.shared.install)
+        alert.addButton(withTitle: L10n.shared.quit)
+        
+        NSApp.activate(ignoringOtherApps: true)
+        // If we have a loading window, show it over it, or over settings
+        let window = loadingWindow?.window ?? settingsWindow?.window ?? NSWindow()
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn {
+                self.performInstallation()
+            } else {
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     private func performInstallation() {
