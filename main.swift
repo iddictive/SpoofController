@@ -310,8 +310,19 @@ class GitHubUpdater {
         alert.addButton(withTitle: L10n.shared.updateLater)
         
         NSApp.activate(ignoringOtherApps: true)
-        alert.beginSheetModal(for: NSApp.keyWindow ?? NSWindow()) { response in
-            if response == .alertFirstButtonReturn, let urlString = downloadUrl, let url = URL(string: urlString) {
+        // Find the most appropriate window to show the sheet on
+        let parentWindow = (NSApp.delegate as? AppDelegate)?.loadingWindow?.window ?? 
+                          (NSApp.delegate as? AppDelegate)?.settingsWindow?.window
+        
+        if let window = parentWindow {
+            alert.beginSheetModal(for: window) { response in
+                if response == .alertFirstButtonReturn, let urlString = downloadUrl, let url = URL(string: urlString) {
+                    self.startAutomatedUpdate(url: url)
+                }
+            }
+        } else {
+            // Fallback to modal if no windows are available to avoid the "bottom-left" bug
+            if alert.runModal() == .alertFirstButtonReturn, let urlString = downloadUrl, let url = URL(string: urlString) {
                 self.startAutomatedUpdate(url: url)
             }
         }
@@ -985,8 +996,15 @@ class LoadingWindowController: NSWindowController {
     func updateProgress(_ value: Double) { DispatchQueue.main.async { self.indicator?.isIndeterminate = false; self.indicator?.doubleValue = value * 100 } }
     func setProgressIndeterminate(_ value: Bool) { DispatchQueue.main.async { self.indicator?.isIndeterminate = value; if value { self.indicator?.startAnimation(nil) } } }
     @objc func cancelClicked() { cancelHandler?() }
-    func showWithFade() { window?.alphaValue = 0; showWindow(nil); NSAnimationContext.runAnimationGroup { $0.duration = 0.4; window?.animator().alphaValue = 1.0 } }
-    func closeWithFade(completion: @escaping () -> Void) { NSAnimationContext.runAnimationGroup({ $0.duration = 0.4; window?.animator().alphaValue = 0 }, completionHandler: completion) }
+    func showWithFade() { 
+        window?.alphaValue = 0
+        window?.center() // Ensure it's centered before showing
+        showWindow(nil)
+        NSAnimationContext.runAnimationGroup { $0.duration = 0.4; window?.animator().alphaValue = 1.0 } 
+    }
+    func closeWithFade(completion: @escaping () -> Void) { 
+        NSAnimationContext.runAnimationGroup({ $0.duration = 0.4; window?.animator().alphaValue = 0 }, completionHandler: completion) 
+    }
 }
 
 // MARK: - App Delegate
@@ -1004,7 +1022,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupSignalHandlers()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         refreshUI()
-        loadingWindow = LoadingWindowController(); loadingWindow?.showWithFade()
+        
+        // Ensure only one instance of loadingWindow exists
+        if loadingWindow == nil { loadingWindow = LoadingWindowController() }
+        loadingWindow?.showWithFade()
+        
         GitHubUpdater.shared.checkForUpdates()
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.attemptStart() }
     }
@@ -1037,14 +1059,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: L10n.shared.quit)
         
         NSApp.activate(ignoringOtherApps: true)
-        // If we have a loading window, show it over it, or over settings
-        let window = loadingWindow?.window ?? settingsWindow?.window ?? NSWindow()
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertFirstButtonReturn {
-                self.performInstallation()
-            } else {
-                NSApp.terminate(nil)
+        // Use an existing window or run modal as a fallback
+        if let window = loadingWindow?.window ?? settingsWindow?.window {
+            alert.beginSheetModal(for: window) { response in
+                if response == .alertFirstButtonReturn { self.performInstallation() } else { NSApp.terminate(nil) }
             }
+        } else {
+            if alert.runModal() == .alertFirstButtonReturn { performInstallation() } else { NSApp.terminate(nil) }
         }
     }
 
