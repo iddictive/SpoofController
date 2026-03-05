@@ -309,64 +309,63 @@ class GitHubUpdater {
         alert.addButton(withTitle: L10n.shared.updateDownload)
         alert.addButton(withTitle: L10n.shared.updateLater)
         
-        if alert.runModal() == .alertFirstButtonReturn, let urlString = downloadUrl, let url = URL(string: urlString) {
-            startAutomatedUpdate(url: url)
+        NSApp.activate(ignoringOtherApps: true)
+        alert.beginSheetModal(for: NSApp.keyWindow ?? NSWindow()) { response in
+            if response == .alertFirstButtonReturn, let urlString = downloadUrl, let url = URL(string: urlString) {
+                self.startAutomatedUpdate(url: url)
+            }
         }
     }
 
     private func startAutomatedUpdate(url: URL) {
-        let progress = NSAlert()
-        progress.messageText = L10n.shared.updateDownloading
-        let indicator = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 200, height: 20))
-        indicator.isIndeterminate = false
-        indicator.minValue = 0
-        indicator.maxValue = 1
-        indicator.doubleValue = 0
-        progress.accessoryView = indicator
+        DispatchQueue.main.async {
+            let appDelegate = NSApp.delegate as? AppDelegate
+            if appDelegate?.loadingWindow == nil {
+                appDelegate?.loadingWindow = LoadingWindowController()
+            }
+            appDelegate?.loadingWindow?.updateStatus(L10n.shared.updateDownloading)
+            appDelegate?.loadingWindow?.showWithFade()
+        }
         
         downloadTask = URLSession.shared.downloadTask(with: url) { [weak self] localURL, _, error in
             DispatchQueue.main.async {
                 self?.observation = nil
                 if let localURL = localURL, error == nil {
-                    // Copy to a permanent temp path
                     let tempPath = NSTemporaryDirectory() + "DPIKillerUpdate.dmg"
                     try? FileManager.default.removeItem(atPath: tempPath)
                     try? FileManager.default.copyItem(at: localURL, to: URL(fileURLWithPath: tempPath))
-                    
-                    progress.window.close()
                     self?.performInstallation(dmgPath: tempPath)
                 } else {
                     let fail = NSAlert()
                     fail.messageText = L10n.shared.updateFailed
                     fail.informativeText = error?.localizedDescription ?? "Download failed."
                     fail.runModal()
+                    (NSApp.delegate as? AppDelegate)?.loadingWindow?.closeWithFade {
+                        (NSApp.delegate as? AppDelegate)?.loadingWindow = nil
+                    }
                 }
             }
         }
         
         observation = downloadTask?.progress.observe(\.fractionCompleted) { progress, _ in
             DispatchQueue.main.async {
-                indicator.doubleValue = progress.fractionCompleted
+                (NSApp.delegate as? AppDelegate)?.loadingWindow?.updateProgress(progress.fractionCompleted)
             }
         }
         
         downloadTask?.resume()
-        progress.runModal()
     }
 
     private func performInstallation(dmgPath: String) {
-        let installAlert = NSAlert()
-        installAlert.messageText = L10n.shared.updateInstalling
-        let indicator = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 200, height: 20))
-        indicator.isIndeterminate = true
-        indicator.startAnimation(nil)
-        installAlert.accessoryView = indicator
+        DispatchQueue.main.async {
+            (NSApp.delegate as? AppDelegate)?.loadingWindow?.updateStatus(L10n.shared.updateInstalling)
+            (NSApp.delegate as? AppDelegate)?.loadingWindow?.setProgressIndeterminate(true)
+        }
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let script = """
             mkdir -p /tmp/dpi_killer_update
             hdiutil attach "\(dmgPath)" -mountpoint /tmp/dpi_killer_update -nobrowse -quiet
-            # Force replace existing app
             rm -rf /Applications/DPIKiller.app
             cp -R /tmp/dpi_killer_update/DPIKiller.app /Applications/
             hdiutil detach /tmp/dpi_killer_update -quiet
@@ -379,7 +378,6 @@ class GitHubUpdater {
             process.waitUntilExit()
             
             DispatchQueue.main.async {
-                installAlert.window.close()
                 if process.terminationStatus == 0 {
                     self?.relaunch()
                 } else {
@@ -387,10 +385,12 @@ class GitHubUpdater {
                     fail.messageText = L10n.shared.updateFailed
                     fail.informativeText = "Could not copy the new version to /Applications."
                     fail.runModal()
+                    (NSApp.delegate as? AppDelegate)?.loadingWindow?.closeWithFade {
+                        (NSApp.delegate as? AppDelegate)?.loadingWindow = nil
+                    }
                 }
             }
         }
-        installAlert.runModal()
     }
 
     private func relaunch() {
@@ -960,6 +960,7 @@ class HelpWindowController: NSWindowController {
 
 class LoadingWindowController: NSWindowController {
     private var sublabel: NSTextField?
+    private var indicator: NSProgressIndicator?
     private var cancelButton: NSButton?
     var cancelHandler: (() -> Void)?
     convenience init() {
@@ -976,11 +977,13 @@ class LoadingWindowController: NSWindowController {
         let label = NSTextField(labelWithString: "DPI Killer"); label.font = .systemFont(ofSize: 22, weight: .semibold); label.frame = NSRect(x: 0, y: 55, width: 340, height: 30); label.alignment = .center; container.addSubview(label)
         let sublabel = NSTextField(labelWithString: L10n.shared.preparingBypass); sublabel.font = .systemFont(ofSize: 13, weight: .medium); sublabel.textColor = .secondaryLabelColor
         sublabel.frame = NSRect(x: 0, y: 35, width: 340, height: 20); sublabel.alignment = .center; self.sublabel = sublabel; container.addSubview(sublabel)
-        let indicator = NSProgressIndicator(frame: NSRect(x: 100, y: 15, width: 140, height: 20)); indicator.style = .bar; indicator.isIndeterminate = true; indicator.startAnimation(nil); container.addSubview(indicator)
+        indicator = NSProgressIndicator(frame: NSRect(x: 100, y: 15, width: 140, height: 20)); indicator?.style = .bar; indicator?.isIndeterminate = true; indicator?.startAnimation(nil); container.addSubview(indicator!)
         cancelButton = NSButton(title: L10n.shared.cancel, target: self, action: #selector(cancelClicked)); cancelButton?.frame = NSRect(x: 120, y: 5, width: 100, height: 20); cancelButton?.bezelStyle = .recessed; cancelButton?.isHidden = true; container.addSubview(cancelButton!)
         window?.invalidateShadow()
     }
     func updateStatus(_ text: String, showCancel: Bool = false) { DispatchQueue.main.async { self.sublabel?.stringValue = text; self.cancelButton?.isHidden = !showCancel } }
+    func updateProgress(_ value: Double) { DispatchQueue.main.async { self.indicator?.isIndeterminate = false; self.indicator?.doubleValue = value * 100 } }
+    func setProgressIndeterminate(_ value: Bool) { DispatchQueue.main.async { self.indicator?.isIndeterminate = value; if value { self.indicator?.startAnimation(nil) } } }
     @objc func cancelClicked() { cancelHandler?() }
     func showWithFade() { window?.alphaValue = 0; showWindow(nil); NSAnimationContext.runAnimationGroup { $0.duration = 0.4; window?.animator().alphaValue = 1.0 } }
     func closeWithFade(completion: @escaping () -> Void) { NSAnimationContext.runAnimationGroup({ $0.duration = 0.4; window?.animator().alphaValue = 0 }, completionHandler: completion) }
@@ -1030,13 +1033,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func performInstallation() {
         if loadingWindow == nil { loadingWindow = LoadingWindowController() }
         loadingWindow?.updateStatus(L10n.shared.installing, showCancel: true)
-        loadingWindow?.cancelHandler = { [weak self] in DPIKillerManager.shared.cancelInstall(); self?.loadingWindow?.closeWithFade { self?.loadingWindow = nil; self?.refreshUI() } }
+        loadingWindow?.setProgressIndeterminate(true)
+        loadingWindow?.cancelHandler = { [weak self] in 
+            DPIKillerManager.shared.cancelInstall()
+            self?.loadingWindow?.closeWithFade { self?.loadingWindow = nil; self?.refreshUI() } 
+        }
         loadingWindow?.showWithFade()
+        
         DPIKillerManager.shared.install { [weak self] success, error in
-            self?.loadingWindow?.closeWithFade {
-                self?.loadingWindow = nil; self?.refreshUI()
-                if success { let s = NSAlert(); s.messageText = L10n.shared.installComplete; s.informativeText = L10n.shared.installSuccess; NSApp.activate(ignoringOtherApps: true); s.runModal(); self?.attemptStart() }
-                else if error != nil { let f = NSAlert(); f.messageText = L10n.shared.installFailed; f.informativeText = error ?? L10n.shared.installManual; NSApp.activate(ignoringOtherApps: true); f.runModal() }
+            if success {
+                self?.loadingWindow?.updateStatus(L10n.shared.installComplete)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self?.loadingWindow?.closeWithFade {
+                        self?.loadingWindow = nil
+                        self?.refreshUI()
+                        self?.attemptStart()
+                    }
+                }
+            } else {
+                self?.loadingWindow?.closeWithFade {
+                    self?.loadingWindow = nil
+                    self?.refreshUI()
+                    if let error = error {
+                        let f = NSAlert()
+                        f.messageText = L10n.shared.installFailed
+                        f.informativeText = error
+                        NSApp.activate(ignoringOtherApps: true)
+                        f.runModal()
+                    }
+                }
             }
         }
     }
