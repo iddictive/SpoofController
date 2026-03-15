@@ -39,13 +39,24 @@ struct L10n {
     var ttlTitle: String { isRussian ? "TTL пакетов:" : "Packet TTL:" }
     var ttlPlaceholder: String { isRussian ? "По умолч: 64" : "Default: 64" }
     var ttlInstruction: String { isRussian ? "Помогает обходить некоторые типы DPI." : "Helps bypass certain DPI types." }
-    var windowSizeTitle: String { isRussian ? "Размер фрагментации (Window Size):" : "Fragmentation (Window Size):" }
-    var windowSizePlaceholder: String { isRussian ? "По умолч: 0 (Выкл)" : "Default: 0 (Off)" }
-    var windowSizeInstruction: String { isRussian ? "Измените, если блочит HTTPS." : "Adjust if HTTPS is blocked." }
+    var splitModeTitle: String { isRussian ? "Режим разделения (Split Mode):" : "HTTPS Split Mode:" }
+    var splitInstruction: String { isRussian ? "sni, random, chunk или none." : "sni, random, chunk or none." }
+    var httpsDisorder: String { isRussian ? "Перемешивание (Disorder):" : "HTTPS Disorder:" }
+    var httpsFakeCount: String { isRussian ? "Фейковые пакеты (Fake Count):" : "HTTPS Fake Count:" }
+    var httpsChunkSize: String { isRussian ? "Размер чанка (Chunk Size):" : "HTTPS Chunk Size:" }
+    var httpsChunkPlaceholder: String { isRussian ? "По умолч: 0" : "Default: 0" }
+    var mobilePresetTitle: String { isRussian ? "Оптимизировать для хотспота (iPhone/Android)" : "Optimize for Mobile Hotspot (iPhone/Android)" }
     
     var portTitle: String { isRussian ? "Локальный порт:" : "Local Port:" }
     var portPlaceholder: String { isRussian ? "По умолч: 8080" : "Default: 8080" }
 
+    var hotspotStatusTitle: String { isRussian ? "Состояние хотспота:" : "Hotspot Status:" }
+    var hotspotStatusOptimized: String { isRussian ? "Оптимизировано ✅" : "Optimized ✅" }
+    var hotspotStatusThrottled: String { isRussian ? "Ограничено провайдером ⚠️" : "Throttled by ISP ⚠️" }
+    var fixHotspotButton: String { isRussian ? "Снять ограничения (Sudo)" : "Remove Limits (Sudo)" }
+    var fixHotspotSuccess: String { isRussian ? "Настройки TTL успешно применены! 🚀" : "TTL settings applied successfully! 🚀" }
+    var fixHotspotFailed: String { isRussian ? "Не удалось применить настройки." : "Failed to apply settings." }
+    
     var dnsTitle: String { isRussian ? "Настройки DNS:" : "DNS Settings:" }
     var dnsAddrTitle: String { isRussian ? "DNS Адрес:" : "DNS Address:" }
     var dnsModeTitle: String { isRussian ? "Режим DNS:" : "DNS Mode:" }
@@ -87,6 +98,114 @@ struct L10n {
     var autoUpdateTitle: String { isRussian ? "Обновления:" : "Updates:" }
     var autoUpdateToggle: String { isRussian ? "Автоматически проверять обновления" : "Automatically check for updates" }
     var autoDownloadToggle: String { isRussian ? "Автоматически скачивать обновления" : "Automatically download updates" }
+    
+    // Speed Test
+    var speedTest: String { isRussian ? "Тест скорости" : "Speed Test" }
+    var speedTestTitle: String { isRussian ? "Тестирование скорости" : "Speed Testing" }
+    var startTest: String { isRussian ? "Начать тест" : "Start Test" }
+    var stopTest: String { isRussian ? "Остановить" : "Stop Test" }
+    var testingDownload: String { isRussian ? "Загрузка..." : "Downloading..." }
+    var testingUpload: String { isRussian ? "Отдача..." : "Uploading..." }
+    var testingPing: String { isRussian ? "Пинг..." : "Ping..." }
+    var ping: String { isRussian ? "Пинг" : "Ping" }
+    var download: String { isRussian ? "Загрузка" : "Download" }
+    var upload: String { isRussian ? "Отдача" : "Upload" }
+    var ms: String { isRussian ? "мс" : "ms" }
+    var mbps: String { isRussian ? "Мбит/с" : "Mbps" }
+    
+    // Logs
+    var logsTitle: String { isRussian ? "Логи событий" : "Event Logs" }
+    var clearLogs: String { isRussian ? "Очистить" : "Clear" }
+    var copyLogs: String { isRussian ? "Копировать" : "Copy" }
+    
+    // Diagnostics
+    var diagTitle: String { isRussian ? "Диагностика связи" : "Connectivity Diagnostics" }
+    var diagChecking: String { isRussian ? "Проверка..." : "Checking..." }
+    var diagSuccess: String { isRussian ? "Обход работает! ✅" : "Bypass is working! ✅" }
+    var diagFailed: String { isRussian ? "Обход не работает ❌" : "Bypass is failing ❌" }
+    var diagNoProxy: String { isRussian ? "Прокси не запущен" : "Proxy is not running" }
+    
+    // IPv6
+    var disableIpv6: String { isRussian ? "Отключить IPv6 (рекомендуется)" : "Disable IPv6 (recommended)" }
+    var ipv6Warning: String { isRussian ? "Предотвращает утечки трафика мимо прокси." : "Prevents traffic leakage bypassing the proxy." }
+}
+
+// MARK: - Log Store (Circular Buffer)
+class LogStore {
+    static let shared = LogStore()
+    private let maxLines = 1000
+    private(set) var lines: [String] = []
+    var onUpdate: (() -> Void)?
+    
+    private let queue = DispatchQueue(label: "com.iddictive.logstore", qos: .utility)
+    
+    // Throttling fields
+    private var lastUpdate: Date = .distantPast
+    private let throttleInterval: TimeInterval = 0.2 // 5Hz max refresh
+    private var updatePending = false
+    
+    func append(_ text: String) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            let newLines = text.components(separatedBy: .newlines).filter { !$0.isEmpty }
+            if newLines.isEmpty { return }
+            
+            let timestamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withTime, .withColonSeparatorInTime])
+            
+            for line in newLines {
+                self.lines.append("[\(timestamp)] \(line)")
+            }
+            
+            if self.lines.count > self.maxLines {
+                self.lines.removeFirst(self.lines.count - self.maxLines)
+            }
+            
+            self.scheduleUpdate()
+        }
+    }
+
+    private func scheduleUpdate() {
+        dispatchPrecondition(condition: .onQueue(queue))
+        
+        guard !updatePending else { return }
+        
+        let now = Date()
+        let timeSinceLast = now.timeIntervalSince(lastUpdate)
+        
+        if timeSinceLast >= throttleInterval {
+            self.lastUpdate = now
+            DispatchQueue.main.async { [weak self] in
+                self?.onUpdate?()
+                self?.queue.async { self?.updatePending = false }
+            }
+            updatePending = true
+        } else {
+            updatePending = true
+            let delay = throttleInterval - timeSinceLast
+            queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.lastUpdate = Date()
+                DispatchQueue.main.async { [weak self] in
+                    self?.onUpdate?()
+                    self?.queue.async { self?.updatePending = false }
+                }
+            }
+        }
+    }
+    
+    func clear() {
+        queue.async {
+            self.lines.removeAll()
+            DispatchQueue.main.async {
+                self.onUpdate?()
+            }
+        }
+    }
+    
+    func getAllLogs() -> String {
+        return queue.sync {
+            self.lines.joined(separator: "\n")
+        }
+    }
 }
 
 // MARK: - Settings Store
@@ -105,13 +224,28 @@ class SettingsStore {
     }
     
     var defaultTTL: String {
-        get { defaults.string(forKey: "defaultTTL") ?? "" }
+        get { defaults.string(forKey: "defaultTTL") ?? "128" }
         set { defaults.set(newValue, forKey: "defaultTTL") }
     }
     
-    var windowSize: String {
-        get { defaults.string(forKey: "windowSize") ?? "" }
-        set { defaults.set(newValue, forKey: "windowSize") }
+    var splitMode: String {
+        get { defaults.string(forKey: "splitMode") ?? "random" }
+        set { defaults.set(newValue, forKey: "splitMode") }
+    }
+    
+    var httpsDisorder: Bool {
+        get { defaults.object(forKey: "httpsDisorder") == nil ? true : defaults.bool(forKey: "httpsDisorder") }
+        set { defaults.set(newValue, forKey: "httpsDisorder") }
+    }
+    
+    var httpsFakeCount: String {
+        get { defaults.string(forKey: "httpsFakeCount") ?? "0" }
+        set { defaults.set(newValue, forKey: "httpsFakeCount") }
+    }
+    
+    var httpsChunkSize: String {
+        get { defaults.string(forKey: "httpsChunkSize") ?? "20" }
+        set { defaults.set(newValue, forKey: "httpsChunkSize") }
     }
     
     var localPort: String {
@@ -140,22 +274,52 @@ class SettingsStore {
     }
     
     var autoDownload: Bool {
-        get { defaults.object(forKey: "autoDownload") as? Bool ?? true }
+        get { defaults.object(forKey: "autoDownload") as? Bool ?? false }
         set { defaults.set(newValue, forKey: "autoDownload") }
+    }
+    
+    var disableIpv6: Bool {
+        get { defaults.bool(forKey: "disableIpv6") }
+        set { 
+            defaults.set(newValue, forKey: "disableIpv6")
+            applyIpv6Settings(newValue)
+        }
+    }
+    
+    private func applyIpv6Settings(_ disable: Bool) {
+        let state = disable ? "off" : "on"
+        let script = "services=$(networksetup -listallnetworkservices | grep -v '*'); while IFS= read -r service; do networksetup -setv6\(state) \"$service\" 2>/dev/null; done <<< \"$services\""
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-c", script]
+        try? process.run()
     }
     
     var selectedFlags: Set<String> {
         let args = customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-        return Set(args.filter { $0.hasPrefix("-") && !$0.hasPrefix("--default-ttl") && !$0.hasPrefix("--window-size") && !$0.hasPrefix("--listen-addr") && !$0.hasPrefix("--dns-addr") && !$0.hasPrefix("--dns-mode") && !$0.hasPrefix("--dns-https-url") })
+        return Set(args.filter { $0.hasPrefix("-") && !$0.hasPrefix("--default-ttl") && !$0.hasPrefix("--https-chunk-size") && !$0.hasPrefix("--https-fake-count") && !$0.hasPrefix("--listen-addr") && !$0.hasPrefix("--dns-addr") && !$0.hasPrefix("--dns-mode") && !$0.hasPrefix("--dns-https-url") && !$0.hasPrefix("--https-split-mode") })
     }
     
-    func updateArgs(with flags: Set<String>, manual: String, ttl: String, windowSize: String, port: String, dnsAddr: String, dnsMode: String, dnsHttpsUrl: String) {
+    func updateArgs(with flags: Set<String>, manual: String, ttl: String, splitMode: String, splitPos: String, port: String, dnsAddr: String, dnsMode: String, dnsHttpsUrl: String) {
         var uniqueFlags = flags.joined(separator: " ")
         if let ttlInt = Int(ttl), ttlInt > 0 {
             uniqueFlags += " --default-ttl \(ttlInt)"
         }
-        if let windowInt = Int(windowSize), windowInt > 0 {
-            uniqueFlags += " --window-size \(windowInt)"
+        
+        if !splitMode.isEmpty && splitMode != "sni" {
+            uniqueFlags += " --https-split-mode \(splitMode)"
+        }
+        
+        if let fakeCount = Int(SettingsStore.shared.httpsFakeCount), fakeCount > 0 {
+            uniqueFlags += " --https-fake-count \(fakeCount)"
+        }
+        
+        if let chunkSize = Int(SettingsStore.shared.httpsChunkSize), chunkSize > 0 {
+            uniqueFlags += " --https-chunk-size \(chunkSize)"
+        }
+        
+        if SettingsStore.shared.httpsDisorder {
+            uniqueFlags += " --https-disorder"
         }
         
         let portToUse = port.trimmingCharacters(in: .whitespaces)
@@ -171,7 +335,7 @@ class SettingsStore {
             uniqueFlags += " --dns-mode \(dnsMode)"
         }
 
-        if dnsMode == "doh" && !dnsHttpsUrl.isEmpty && dnsHttpsUrl != "https://dns.google/dns-query" {
+        if dnsMode == "https" && !dnsHttpsUrl.isEmpty && dnsHttpsUrl != "https://dns.google/dns-query" {
             uniqueFlags += " --dns-https-url \(dnsHttpsUrl)"
         }
         
@@ -181,7 +345,7 @@ class SettingsStore {
         var i = 0
         while i < manualParts.count {
             let part = manualParts[i]
-            if part == "--default-ttl" || part == "--window-size" || part == "--listen-addr" || part == "--dns-addr" || part == "--dns-mode" || part == "--dns-https-url" {
+            if part == "--default-ttl" || part == "--https-split-mode" || part == "--https-split-pos" || part == "--listen-addr" || part == "--dns-addr" || part == "--dns-mode" || part == "--dns-https-url" {
                 i += 2 // Skip flag and value
             } else if flags.contains(part) {
                 i += 1 // Skip known flag
@@ -424,6 +588,8 @@ class DPIKillerManager {
     private var installProcess: Process?
     private(set) var isRunning = false
     
+    private var outputPipe: Pipe?
+    
     // MARK: CPU Watchdog
     private var watchdogTimer: DispatchSourceTimer?
     private var highCpuStrikes = 0
@@ -474,10 +640,20 @@ class DPIKillerManager {
         process.arguments = args
         
         
-        // No pipe needed if we don't process logs - prevents deadlocks
-        process.standardOutput = nil
-        process.standardError = nil
         
+        
+        // Setup Pipe for async logging
+        let pipe = Pipe()
+        self.outputPipe = pipe
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if let str = String(data: data, encoding: .utf8), !str.isEmpty {
+                LogStore.shared.append(str)
+            }
+        }
         
         process.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async {
@@ -642,11 +818,22 @@ class DPIKillerManager {
         isRunning = false
         wasRunningBeforeDisconnect = false // User manually stopped, don't auto-restart
         stopWatchdog()
+        
+        outputPipe?.fileHandleForReading.readabilityHandler = nil
+        outputPipe = nil
+        
         process?.terminate()
         process = nil
         killOrphans() // Double safety cleanup
         disableSystemProxy()
         (NSApp.delegate as? AppDelegate)?.refreshUI()
+    }
+
+    func fullCleanup() {
+        print("[Manager] Performing full cleanup...")
+        stop()
+        // Ensure IPv6 is restored to default (on)
+        SettingsStore.shared.disableIpv6 = false
     }
 
     private func killOrphans() {
@@ -705,7 +892,213 @@ class NetworkMonitor {
     }
 }
 
-// MARK: - Windows
+// MARK: - Speed Test Manager
+class SpeedTestManager: NSObject, URLSessionDownloadDelegate, URLSessionTaskDelegate {
+    static let shared = SpeedTestManager()
+    
+    private var session: URLSession?
+    private var downloadTask: URLSessionDownloadTask?
+    private var uploadTask: URLSessionUploadTask?
+    
+    private var startTime: Date?
+    private var totalBytesReceived: Int64 = 0
+    private var totalBytesSent: Int64 = 0
+    
+    var onUpdate: ((Double, Double, Double) -> Void)? // Ping, Down, Up
+    var onFinished: (() -> Void)?
+    var onError: ((String) -> Void)?
+    
+    private var pingValue: Double = 0
+    private var downloadValue: Double = 0
+    private var uploadValue: Double = 0
+    
+    func startTest() {
+        reset()
+        measurePing()
+    }
+    
+    func stopTest() {
+        downloadTask?.cancel()
+        uploadTask?.cancel()
+        session?.invalidateAndCancel()
+        onFinished?()
+    }
+    
+    private func reset() {
+        pingValue = 0; downloadValue = 0; uploadValue = 0
+        totalBytesReceived = 0; totalBytesSent = 0
+    }
+    
+    private func measurePing() {
+        let url = URL(string: "https://speed.cloudflare.com/cdn-cgi/trace")!
+        let start = Date()
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        
+        URLSession.shared.dataTask(with: request) { [weak self] _, _, error in
+            if let error = error {
+                self?.onError?(error.localizedDescription)
+                return
+            }
+            self?.pingValue = Date().timeIntervalSince(start) * 1000
+            self?.notify()
+            self?.startDownload()
+        }.resume()
+    }
+    
+    private func startDownload() {
+        let url = URL(string: "https://speed.cloudflare.com/__down?bytes=50000000")!
+        let config = URLSessionConfiguration.ephemeral
+        if DPIKillerManager.shared.isRunning {
+            let port = Int(SettingsStore.shared.localPort) ?? 8080
+            config.connectionProxyDictionary = [
+                kCFNetworkProxiesHTTPEnable: 1,
+                kCFNetworkProxiesHTTPProxy: "127.0.0.1",
+                kCFNetworkProxiesHTTPPort: port,
+                kCFNetworkProxiesHTTPSEnable: 1,
+                kCFNetworkProxiesHTTPSProxy: "127.0.0.1",
+                kCFNetworkProxiesHTTPSPort: port
+            ]
+        }
+        let queue = OperationQueue()
+        queue.name = "SpeedTestQueue"
+        queue.maxConcurrentOperationCount = 1
+        session = URLSession(configuration: config, delegate: self, delegateQueue: queue)
+        startTime = Date()
+        downloadTask = session?.downloadTask(with: url)
+        downloadTask?.resume()
+    }
+    
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        guard let start = startTime else { return }
+        let duration = Date().timeIntervalSince(start)
+        if duration > 0 {
+            downloadValue = (Double(totalBytesWritten) * 8) / (duration * 1_000_000) // Mbps
+            notify()
+        }
+    }
+    
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        forceNotify()
+        startUpload()
+    }
+    
+    private func startUpload() {
+        let url = URL(string: "https://speed.cloudflare.com/__up")!
+        let data = Data(count: 10_000_000) // 10MB upload
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        
+        let config = URLSessionConfiguration.ephemeral
+        if DPIKillerManager.shared.isRunning {
+            let port = Int(SettingsStore.shared.localPort) ?? 8080
+            config.connectionProxyDictionary = [
+                kCFNetworkProxiesHTTPEnable: 1,
+                kCFNetworkProxiesHTTPProxy: "127.0.0.1",
+                kCFNetworkProxiesHTTPPort: port,
+                kCFNetworkProxiesHTTPSEnable: 1,
+                kCFNetworkProxiesHTTPSProxy: "127.0.0.1",
+                kCFNetworkProxiesHTTPSPort: port
+            ]
+        }
+        
+        let uploadSession = URLSession(configuration: config, delegate: self, delegateQueue: .main)
+        startTime = Date()
+        uploadTask = uploadSession.uploadTask(with: request, from: data)
+        uploadTask?.resume()
+    }
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        guard let start = startTime else { return }
+        let duration = Date().timeIntervalSince(start)
+        if duration > 0 {
+            uploadValue = (Double(totalBytesSent) * 8) / (duration * 1_000_000) // Mbps
+            notify()
+        }
+    }
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            onError?(error.localizedDescription)
+        } else if task == uploadTask {
+            forceNotify()
+            onFinished?()
+        }
+    }
+    
+    private var lastNotifyTime: Date = .distantPast
+    private let notifyThrottle: TimeInterval = 0.3 // ~3 updates per second
+
+    private func notify() {
+        let now = Date()
+        if now.timeIntervalSince(lastNotifyTime) >= notifyThrottle {
+            lastNotifyTime = now
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.onUpdate?(self.pingValue, self.downloadValue, self.uploadValue)
+            }
+        }
+    }
+    
+    func forceNotify() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.onUpdate?(self.pingValue, self.downloadValue, self.uploadValue)
+        }
+    }
+}
+
+// MARK: - Diagnostics Manager
+class DiagnosticsManager: NSObject {
+    static let shared = DiagnosticsManager()
+    
+    func checkBypass(completion: @escaping (Bool, String?) -> Void) {
+        guard DPIKillerManager.shared.isRunning else {
+            completion(false, L10n.shared.diagNoProxy)
+            return
+        }
+        
+        let url = URL(string: "https://www.google.com")!
+        let config = URLSessionConfiguration.ephemeral
+        let port = Int(SettingsStore.shared.localPort) ?? 8080
+        
+        config.connectionProxyDictionary = [
+            kCFNetworkProxiesHTTPEnable: 1,
+            kCFNetworkProxiesHTTPProxy: "127.0.0.1",
+            kCFNetworkProxiesHTTPPort: port,
+            kCFNetworkProxiesHTTPSEnable: 1,
+            kCFNetworkProxiesHTTPSProxy: "127.0.0.1",
+            kCFNetworkProxiesHTTPSPort: port
+        ]
+        
+        // Timeout 5s
+        config.timeoutIntervalForRequest = 5.0
+        
+        let session = URLSession(configuration: config)
+        let task = session.dataTask(with: url) { data, response, error in
+            if let error = error {
+                completion(false, error.localizedDescription)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                // If it's 200, it's likely working. 
+                // Redirects to auth pages/providers would result in different status codes or content.
+                if httpResponse.statusCode == 200 {
+                    completion(true, nil)
+                } else {
+                    completion(false, "Status code: \(httpResponse.statusCode)")
+                }
+            } else {
+                completion(false, "Unknown response")
+            }
+        }
+        task.resume()
+    }
+}
+
 struct ArgumentOption {
     let flag: String
     let description: String
@@ -715,11 +1108,16 @@ class SettingsWindowController: NSWindowController {
     var pathField: NSTextField!
     var manualArgsField: NSTextField!
     var ttlField: NSTextField!
-    var windowSizeField: NSTextField!
+    var splitModeButton: NSPopUpButton!
+    var httpsDisorderButton: NSButton!
+    var httpsFakeCountField: NSTextField!
+    var httpsChunkSizeField: NSTextField!
     var portField: NSTextField!
     var dnsAddrField: NSTextField!
     var dnsModeButton: NSPopUpButton!
     var dnsHttpsUrlField: NSTextField!
+    var hotspotStatusLabel: NSTextField!
+    var hotspotFixButton: NSButton!
     var checkboxes: [NSButton] = []
     
     let options = [
@@ -732,182 +1130,254 @@ class SettingsWindowController: NSWindowController {
     
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 450, height: 850),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),
+            styleMask: [.titled, .closable, .fullSizeContentView, .miniaturizable],
             backing: .buffered, defer: false)
         window.center()
         window.title = L10n.shared.settingsTitle
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
         self.init(window: window)
         setupUI()
     }
     
+    private func addSectionHeader(_ title: String, at y: inout CGFloat, to view: NSView) {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 13, weight: .bold)
+        label.textColor = .labelColor
+        label.frame = NSRect(x: 20, y: y, width: 600, height: 20)
+        view.addSubview(label)
+        y -= 25
+    }
+    
+    private func addSeparator(at y: inout CGFloat, to view: NSView) {
+        y -= 10
+        let box = NSBox(frame: NSRect(x: 20, y: y, width: 600, height: 1))
+        box.boxType = .separator
+        view.addSubview(box)
+        y -= 20
+    }
+    
     func setupUI() {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 450, height: 850))
-        window?.contentView = view
+        let visualEffectView = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 640, height: 400))
+        visualEffectView.material = .sidebar
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.state = .active
+        window?.contentView = visualEffectView
         
-        var currentY: CGFloat = 800
+        let scrollView = NSScrollView(frame: visualEffectView.bounds)
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.autoresizingMask = [.width, .height]
+        visualEffectView.addSubview(scrollView)
         
-        let pathLabel = NSTextField(labelWithString: L10n.shared.binaryPath)
-        pathLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        pathLabel.frame = NSRect(x: 20, y: currentY, width: 200, height: 20)
-        view.addSubview(pathLabel)
-        currentY -= 30
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 1100))
+        scrollView.documentView = contentView
         
-        pathField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 410, height: 24))
+        var currentY: CGFloat = 1060
+        
+        // --- SECTION 1: CORE ---
+        addSectionHeader(L10n.shared.binaryPath, at: &currentY, to: contentView)
+        pathField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 600, height: 24))
         pathField.stringValue = SettingsStore.shared.binaryPath
         pathField.placeholderString = L10n.shared.binaryPlaceholder
-        view.addSubview(pathField)
+        contentView.addSubview(pathField)
+        currentY -= 40
+        
+        // --- SECTION 2: HOTSPOT OPTIMIZATION ---
+        addSeparator(at: &currentY, to: contentView)
+        addSectionHeader("Mobile Hotspot Strategy", at: &currentY, to: contentView)
+        
+        let statusLabel = NSTextField(labelWithString: L10n.shared.hotspotStatusTitle)
+        statusLabel.font = .systemFont(ofSize: 12)
+        statusLabel.frame = NSRect(x: 20, y: currentY, width: 140, height: 20)
+        contentView.addSubview(statusLabel)
+        
+        hotspotStatusLabel = NSTextField(labelWithString: L10n.shared.diagChecking)
+        hotspotStatusLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        hotspotStatusLabel.frame = NSRect(x: 160, y: currentY, width: 220, height: 20)
+        contentView.addSubview(hotspotStatusLabel)
+        
+        hotspotFixButton = NSButton(title: "🛠 \(L10n.shared.fixHotspotButton)", target: self, action: #selector(fixHotspotAction))
+        hotspotFixButton.bezelStyle = .rounded
+        hotspotFixButton.frame = NSRect(x: 390, y: currentY - 5, width: 230, height: 28)
+        hotspotFixButton.isHidden = true
+        contentView.addSubview(hotspotFixButton)
+        currentY -= 35
+        
+        let presetBtn = NSButton(title: "⚡️ \(L10n.shared.mobilePresetTitle)", target: self, action: #selector(applyMobilePreset))
+        presetBtn.bezelStyle = .rounded
+        presetBtn.controlSize = .large
+        presetBtn.isHighlighted = true
+        presetBtn.frame = NSRect(x: 20, y: currentY, width: 600, height: 32)
+        contentView.addSubview(presetBtn)
         currentY -= 45
         
-        let flagsLabel = NSTextField(labelWithString: L10n.shared.argumentsTitle)
-        flagsLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        flagsLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
-        view.addSubview(flagsLabel)
-        currentY -= 25
+        updateHotspotStatus()
+        
+        // --- SECTION 3: DPI STRATEGY ---
+        addSeparator(at: &currentY, to: contentView)
+        addSectionHeader(L10n.shared.argumentsTitle, at: &currentY, to: contentView)
         
         let selected = SettingsStore.shared.selectedFlags
         for option in options {
             let cb = NSButton(checkboxWithTitle: option.flag, target: nil, action: nil)
-            cb.frame = NSRect(x: 20, y: currentY, width: 150, height: 20)
+            cb.frame = NSRect(x: 20, y: currentY, width: 160, height: 20)
             cb.state = selected.contains(option.flag) ? .on : .off
-            view.addSubview(cb)
+            contentView.addSubview(cb)
             checkboxes.append(cb)
             
             let desc = NSTextField(labelWithString: "— \(option.description)")
             desc.font = .systemFont(ofSize: 11)
             desc.textColor = .secondaryLabelColor
-            desc.frame = NSRect(x: 170, y: currentY, width: 260, height: 18)
-            view.addSubview(desc)
+            desc.frame = NSRect(x: 185, y: currentY, width: 440, height: 18)
+            contentView.addSubview(desc)
             currentY -= 22
         }
         currentY -= 15
         
+        // Packet TTL & Port
         let ttlLabel = NSTextField(labelWithString: L10n.shared.ttlTitle)
-        ttlLabel.font = .systemFont(ofSize: 13, weight: .bold)
         ttlLabel.frame = NSRect(x: 20, y: currentY, width: 110, height: 20)
-        view.addSubview(ttlLabel)
+        contentView.addSubview(ttlLabel)
         
         ttlField = NSTextField(frame: NSRect(x: 135, y: currentY - 2, width: 80, height: 22))
         ttlField.stringValue = SettingsStore.shared.defaultTTL
-        ttlField.placeholderString = L10n.shared.ttlPlaceholder
-        view.addSubview(ttlField)
+        contentView.addSubview(ttlField)
         
-        let ttlInstr = NSTextField(labelWithString: "— \(L10n.shared.ttlInstruction)")
-        ttlInstr.font = .systemFont(ofSize: 11); ttlInstr.textColor = .secondaryLabelColor
-        ttlInstr.frame = NSRect(x: 220, y: currentY, width: 220, height: 18)
-        view.addSubview(ttlInstr)
-        currentY -= 32
-        
-        // Port Setting
         let pLabel = NSTextField(labelWithString: L10n.shared.portTitle)
-        pLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        pLabel.frame = NSRect(x: 20, y: currentY, width: 110, height: 20)
-        view.addSubview(pLabel)
+        pLabel.frame = NSRect(x: 240, y: currentY, width: 100, height: 20)
+        contentView.addSubview(pLabel)
         
-        portField = NSTextField(frame: NSRect(x: 135, y: currentY - 2, width: 80, height: 22))
+        portField = NSTextField(frame: NSRect(x: 345, y: currentY - 2, width: 80, height: 22))
         portField.stringValue = SettingsStore.shared.localPort
-        portField.placeholderString = L10n.shared.portPlaceholder
-        view.addSubview(portField)
+        contentView.addSubview(portField)
         currentY -= 35
         
-        let wsLabel = NSTextField(labelWithString: L10n.shared.windowSizeTitle)
-        wsLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        wsLabel.frame = NSRect(x: 20, y: currentY, width: 280, height: 20)
-        view.addSubview(wsLabel)
-        currentY -= 25
+        // Split Mode
+        let smLabel = NSTextField(labelWithString: L10n.shared.splitModeTitle)
+        smLabel.frame = NSRect(x: 20, y: currentY, width: 180, height: 20)
+        contentView.addSubview(smLabel)
         
-        windowSizeField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 80, height: 22))
-        windowSizeField.stringValue = SettingsStore.shared.windowSize
-        windowSizeField.placeholderString = L10n.shared.windowSizePlaceholder
-        view.addSubview(windowSizeField)
+        splitModeButton = NSPopUpButton(frame: NSRect(x: 205, y: currentY - 2, width: 120, height: 22), pullsDown: false)
+        splitModeButton.addItems(withTitles: ["sni", "random", "chunk", "none"])
+        splitModeButton.selectItem(withTitle: SettingsStore.shared.splitMode)
+        contentView.addSubview(splitModeButton)
+        currentY -= 35
         
-        let wsInstr = NSTextField(labelWithString: "— \(L10n.shared.windowSizeInstruction)")
-        wsInstr.font = .systemFont(ofSize: 11); wsInstr.textColor = .secondaryLabelColor
-        wsInstr.frame = NSRect(x: 105, y: currentY + 2, width: 330, height: 18)
-        view.addSubview(wsInstr)
-        currentY -= 40
+        // --- SECTION 4: HTTPS FRAGMENTATION ---
+        addSeparator(at: &currentY, to: contentView)
+        addSectionHeader("HTTPS Bypass Strategy", at: &currentY, to: contentView)
         
-        let loginLabel = NSTextField(labelWithString: L10n.shared.autoLaunchTitle)
-        loginLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        loginLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
-        view.addSubview(loginLabel)
-        currentY -= 25
+        let disorderLabel = NSTextField(labelWithString: L10n.shared.httpsDisorder)
+        disorderLabel.frame = NSRect(x: 20, y: currentY, width: 180, height: 20)
+        contentView.addSubview(disorderLabel)
         
-        let loginCheckbox = NSButton(checkboxWithTitle: L10n.shared.launchAtLogin, target: self, action: #selector(toggleLoginItem))
-        loginCheckbox.frame = NSRect(x: 20, y: currentY, width: 410, height: 20)
-        loginCheckbox.state = SettingsStore.shared.launchAtLogin ? .on : .off
-        view.addSubview(loginCheckbox)
+        httpsDisorderButton = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+        httpsDisorderButton.frame = NSRect(x: 205, y: currentY, width: 22, height: 20)
+        httpsDisorderButton.state = SettingsStore.shared.httpsDisorder ? .on : .off
+        contentView.addSubview(httpsDisorderButton)
         currentY -= 30
         
-        let updateLabel = NSTextField(labelWithString: L10n.shared.autoUpdateTitle)
-        updateLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        updateLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
-        view.addSubview(updateLabel)
-        currentY -= 25
+        let fakeLabel = NSTextField(labelWithString: L10n.shared.httpsFakeCount)
+        fakeLabel.frame = NSRect(x: 20, y: currentY, width: 180, height: 20)
+        contentView.addSubview(fakeLabel)
         
-        let updateCheckbox = NSButton(checkboxWithTitle: L10n.shared.autoUpdateToggle, target: self, action: #selector(toggleUpdateItem))
-        updateCheckbox.frame = NSRect(x: 20, y: currentY, width: 410, height: 20)
-        updateCheckbox.state = SettingsStore.shared.autoUpdate ? .on : .off
-        view.addSubview(updateCheckbox)
-        currentY -= 22
-        
-        let downloadCheckbox = NSButton(checkboxWithTitle: L10n.shared.autoDownloadToggle, target: self, action: #selector(toggleDownloadItem))
-        downloadCheckbox.frame = NSRect(x: 20, y: currentY, width: 410, height: 20)
-        downloadCheckbox.state = SettingsStore.shared.autoDownload ? .on : .off
-        downloadCheckbox.isEnabled = SettingsStore.shared.autoUpdate
-        view.addSubview(downloadCheckbox)
-        currentY -= 40
-
-        // DNS Section
-        let dnsLabel = NSTextField(labelWithString: L10n.shared.dnsTitle)
-        dnsLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        dnsLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
-        view.addSubview(dnsLabel)
+        httpsFakeCountField = NSTextField(frame: NSRect(x: 205, y: currentY - 2, width: 80, height: 22))
+        httpsFakeCountField.stringValue = SettingsStore.shared.httpsFakeCount
+        contentView.addSubview(httpsFakeCountField)
         currentY -= 30
+        
+        let chunkSizeLabel = NSTextField(labelWithString: L10n.shared.httpsChunkSize)
+        chunkSizeLabel.frame = NSRect(x: 20, y: currentY, width: 180, height: 20)
+        contentView.addSubview(chunkSizeLabel)
+        
+        httpsChunkSizeField = NSTextField(frame: NSRect(x: 205, y: currentY - 2, width: 80, height: 22))
+        httpsChunkSizeField.stringValue = SettingsStore.shared.httpsChunkSize
+        contentView.addSubview(httpsChunkSizeField)
+        currentY -= 40
+        
+        // --- SECTION 5: DNS ---
+        addSeparator(at: &currentY, to: contentView)
+        addSectionHeader(L10n.shared.dnsTitle, at: &currentY, to: contentView)
         
         let daLabel = NSTextField(labelWithString: L10n.shared.dnsAddrTitle)
-        daLabel.frame = NSRect(x: 20, y: currentY, width: 100, height: 20)
-        view.addSubview(daLabel)
-        dnsAddrField = NSTextField(frame: NSRect(x: 120, y: currentY - 2, width: 150, height: 22))
+        daLabel.frame = NSRect(x: 20, y: currentY, width: 140, height: 20)
+        contentView.addSubview(daLabel)
+        dnsAddrField = NSTextField(frame: NSRect(x: 160, y: currentY - 2, width: 440, height: 22))
         dnsAddrField.stringValue = SettingsStore.shared.dnsAddr
-        view.addSubview(dnsAddrField)
+        contentView.addSubview(dnsAddrField)
         currentY -= 30
         
         let dmLabel = NSTextField(labelWithString: L10n.shared.dnsModeTitle)
-        dmLabel.frame = NSRect(x: 20, y: currentY, width: 100, height: 20)
-        view.addSubview(dmLabel)
-        dnsModeButton = NSPopUpButton(frame: NSRect(x: 120, y: currentY - 2, width: 100, height: 22), pullsDown: false)
-        dnsModeButton.addItems(withTitles: ["udp", "doh", "sys"])
+        dmLabel.frame = NSRect(x: 20, y: currentY, width: 140, height: 20)
+        contentView.addSubview(dmLabel)
+        dnsModeButton = NSPopUpButton(frame: NSRect(x: 160, y: currentY - 2, width: 140, height: 22), pullsDown: false)
+        dnsModeButton.addItems(withTitles: ["udp", "https", "system"])
         dnsModeButton.selectItem(withTitle: SettingsStore.shared.dnsMode)
-        view.addSubview(dnsModeButton)
+        contentView.addSubview(dnsModeButton)
         currentY -= 30
         
-        let dhLabel = NSTextField(labelWithString: L10n.shared.dnsHttpsTitle)
-        dhLabel.frame = NSRect(x: 20, y: currentY, width: 100, height: 20)
-        view.addSubview(dhLabel)
-        dnsHttpsUrlField = NSTextField(frame: NSRect(x: 120, y: currentY - 2, width: 310, height: 22))
+        let dhLabel = NSTextField(labelWithString: "DoH/DoT URL:")
+        dhLabel.frame = NSRect(x: 20, y: currentY, width: 140, height: 20)
+        contentView.addSubview(dhLabel)
+        dnsHttpsUrlField = NSTextField(frame: NSRect(x: 160, y: currentY - 2, width: 440, height: 22))
         dnsHttpsUrlField.stringValue = SettingsStore.shared.dnsHttpsUrl
-        view.addSubview(dnsHttpsUrlField)
+        contentView.addSubview(dnsHttpsUrlField)
+        currentY -= 45
+        
+        // --- SECTION 6: SYSTEM ---
+        addSeparator(at: &currentY, to: contentView)
+        addSectionHeader("Application Behavior", at: &currentY, to: contentView)
+        
+        let loginCheckbox = NSButton(checkboxWithTitle: L10n.shared.launchAtLogin, target: self, action: #selector(toggleLoginItem))
+        loginCheckbox.frame = NSRect(x: 20, y: currentY, width: 600, height: 20)
+        loginCheckbox.state = SettingsStore.shared.launchAtLogin ? .on : .off
+        contentView.addSubview(loginCheckbox)
+        currentY -= 25
+        
+        let updateCheckbox = NSButton(checkboxWithTitle: L10n.shared.autoUpdateToggle, target: self, action: #selector(toggleUpdateItem))
+        updateCheckbox.frame = NSRect(x: 20, y: currentY, width: 600, height: 20)
+        updateCheckbox.state = SettingsStore.shared.autoUpdate ? .on : .off
+        contentView.addSubview(updateCheckbox)
+        currentY -= 22
+        
+        let downloadCheckbox = NSButton(checkboxWithTitle: L10n.shared.autoDownloadToggle, target: self, action: #selector(toggleDownloadItem))
+        downloadCheckbox.frame = NSRect(x: 20, y: currentY, width: 600, height: 20)
+        downloadCheckbox.state = SettingsStore.shared.autoDownload ? .on : .off
+        downloadCheckbox.isEnabled = SettingsStore.shared.autoUpdate
+        contentView.addSubview(downloadCheckbox)
+        currentY -= 25
+        
+        let ipv6Checkbox = NSButton(checkboxWithTitle: L10n.shared.disableIpv6, target: self, action: #selector(toggleIpv6))
+        ipv6Checkbox.frame = NSRect(x: 20, y: currentY, width: 600, height: 20)
+        ipv6Checkbox.state = SettingsStore.shared.disableIpv6 ? .on : .off
+        contentView.addSubview(ipv6Checkbox)
+        currentY -= 16
+        
+        let ipv6Desc = NSTextField(labelWithString: L10n.shared.ipv6Warning)
+        ipv6Desc.font = .systemFont(ofSize: 11)
+        ipv6Desc.textColor = .secondaryLabelColor
+        ipv6Desc.frame = NSRect(x: 40, y: currentY, width: 580, height: 18)
+        contentView.addSubview(ipv6Desc)
         currentY -= 40
         
-        let manualLabel = NSTextField(labelWithString: L10n.shared.manualArgsTitle)
-        manualLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        manualLabel.frame = NSRect(x: 20, y: currentY, width: 300, height: 20)
-        view.addSubview(manualLabel)
-        currentY -= 30
+        // --- SECTION 7: ADVANCED ---
+        addSeparator(at: &currentY, to: contentView)
+        addSectionHeader(L10n.shared.manualArgsTitle, at: &currentY, to: contentView)
         
-        manualArgsField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 410, height: 24))
+        manualArgsField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 600, height: 24))
         let allArgs = SettingsStore.shared.customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
         var manualParts: [String] = []
         var i = 0
         while i < allArgs.count {
             let arg = allArgs[i]
-            if arg == "--default-ttl" || arg == "--window-size" || arg == "--listen-addr" || arg == "--dns-addr" || arg == "--dns-mode" || arg == "--dns-https-url" {
-                i += 2 // skip flag AND its value
+            if arg == "--default-ttl" || arg == "--https-split-mode" || arg == "--listen-addr" || arg == "--dns-addr" || arg == "--dns-mode" || arg == "--dns-https-url" || arg == "--https-disorder" || arg == "--https-fake-count" || arg == "--https-chunk-size" {
+                // Skip flag and its potential value if it's already covered by UI
+                i += 1 
+                if i < allArgs.count && !allArgs[i].hasPrefix("-") { i += 1 }
             } else if options.contains(where: { $0.flag == arg }) {
-                i += 1 // skip the flag itself
-            } else if Int(arg) != nil {
-                i += 1 // skip standalone numbers (likely leaked values)
+                i += 1
             } else {
                 manualParts.append(arg)
                 i += 1
@@ -915,13 +1385,97 @@ class SettingsWindowController: NSWindowController {
         }
         manualArgsField.stringValue = manualParts.joined(separator: " ")
         manualArgsField.placeholderString = L10n.shared.manualArgsPlaceholder
-        view.addSubview(manualArgsField)
+        contentView.addSubview(manualArgsField)
         currentY -= 45
         
+        // --- FOOTER: ACTIONS ---
+        addSeparator(at: &currentY, to: contentView)
+        
+        let cancelBtn = NSButton(title: L10n.shared.cancel, target: self, action: #selector(cancelAction))
+        cancelBtn.frame = NSRect(x: 20, y: currentY - 5, width: 290, height: 32)
+        cancelBtn.bezelStyle = .rounded
+        contentView.addSubview(cancelBtn)
+        
         let saveButton = NSButton(title: L10n.shared.saveAndRestart, target: self, action: #selector(save))
-        saveButton.frame = NSRect(x: 220, y: 20, width: 210, height: 32)
+        saveButton.frame = NSRect(x: 330, y: currentY - 5, width: 290, height: 32)
         saveButton.bezelStyle = .rounded
-        view.addSubview(saveButton)
+        saveButton.keyEquivalent = "\r"
+        contentView.addSubview(saveButton)
+        
+        currentY -= 50
+        contentView.frame.size.height = 1060 - currentY + 20
+    }
+    
+    @objc func cancelAction() {
+        window?.close()
+    }
+    
+    @objc func applyMobilePreset() {
+        ttlField.stringValue = "128"
+        splitModeButton.selectItem(withTitle: "random")
+        httpsChunkSizeField.stringValue = "20"
+        httpsDisorderButton.state = .on
+        httpsFakeCountField.stringValue = "0"
+        
+        // Visual feedback
+        ttlField.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.2).cgColor
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 1.0
+            self.ttlField.layer?.backgroundColor = NSColor.clear.cgColor
+        }
+        
+        if getSystemTTL() != 65 {
+            fixHotspotAction()
+        }
+    }
+    
+    @objc func fixHotspotAction() {
+        let script = "do shell script \"sysctl -w net.inet.ip.ttl=65 && sysctl -w net.inet6.ip6.hlim=65\" with administrator privileges"
+        let appleScript = NSAppleScript(source: script)
+        var error: NSDictionary?
+        appleScript?.executeAndReturnError(&error)
+        
+        if let err = error {
+            print("AppleScript Error: \(err)")
+            let alert = NSAlert()
+            alert.messageText = L10n.shared.fixHotspotFailed
+            alert.informativeText = "\(err["NSAppleScriptErrorMessage"] ?? "Unknown error")"
+            alert.runModal()
+        } else {
+            updateHotspotStatus()
+        }
+    }
+    
+    func updateHotspotStatus() {
+        let ttl = getSystemTTL()
+        if ttl == 65 {
+            hotspotStatusLabel.stringValue = L10n.shared.hotspotStatusOptimized
+            hotspotStatusLabel.textColor = .systemGreen
+            hotspotFixButton.isHidden = true
+        } else {
+            hotspotStatusLabel.stringValue = L10n.shared.hotspotStatusThrottled
+            hotspotStatusLabel.textColor = .systemOrange
+            hotspotFixButton.isHidden = false
+        }
+    }
+    
+    func getSystemTTL() -> Int {
+        let task = Process()
+        task.launchPath = "/usr/sbin/sysctl"
+        task.arguments = ["-n", "net.inet.ip.ttl"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               let val = Int(output) {
+                return val
+            }
+        } catch {
+            return 64
+        }
+        return 64
     }
     
     @objc func toggleLoginItem(_ sender: NSButton) {
@@ -936,21 +1490,33 @@ class SettingsWindowController: NSWindowController {
         SettingsStore.shared.autoUpdate = (sender.state == .on)
     }
     
+    @objc func toggleIpv6(_ sender: NSButton) {
+        SettingsStore.shared.disableIpv6 = (sender.state == .on)
+    }
+    
     @objc func save() {
         var flags = Set<String>()
         for (index, cb) in checkboxes.enumerated() {
             if cb.state == .on { flags.insert(options[index].flag) }
         }
         SettingsStore.shared.binaryPath = pathField.stringValue
-        SettingsStore.shared.defaultTTL = ttlField.stringValue.trimmingCharacters(in: .whitespaces)
-        SettingsStore.shared.windowSize = windowSizeField.stringValue.trimmingCharacters(in: .whitespaces)
-        SettingsStore.shared.localPort = portField.stringValue.trimmingCharacters(in: .whitespaces)
-        SettingsStore.shared.dnsAddr = dnsAddrField.stringValue.trimmingCharacters(in: .whitespaces)
+        SettingsStore.shared.defaultTTL = ttlField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsStore.shared.splitMode = splitModeButton.titleOfSelectedItem ?? "sni"
+        SettingsStore.shared.httpsDisorder = httpsDisorderButton.state == .on
+        SettingsStore.shared.httpsFakeCount = httpsFakeCountField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsStore.shared.httpsChunkSize = httpsChunkSizeField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsStore.shared.localPort = portField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsStore.shared.dnsAddr = dnsAddrField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         SettingsStore.shared.dnsMode = dnsModeButton.titleOfSelectedItem ?? "udp"
-        SettingsStore.shared.dnsHttpsUrl = dnsHttpsUrlField.stringValue.trimmingCharacters(in: .whitespaces)
+        SettingsStore.shared.dnsHttpsUrl = dnsHttpsUrlField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Re-apply IPv6 settings just in case
+        SettingsStore.shared.disableIpv6 = SettingsStore.shared.disableIpv6
+        
         SettingsStore.shared.updateArgs(with: flags, manual: manualArgsField.stringValue, 
                                         ttl: SettingsStore.shared.defaultTTL, 
-                                        windowSize: SettingsStore.shared.windowSize, 
+                                        splitMode: SettingsStore.shared.splitMode, 
+                                        splitPos: "1", 
                                         port: SettingsStore.shared.localPort,
                                         dnsAddr: SettingsStore.shared.dnsAddr,
                                         dnsMode: SettingsStore.shared.dnsMode,
@@ -968,20 +1534,221 @@ class SettingsWindowController: NSWindowController {
     }
 }
 
+// MARK: - Speed Test Window
+class SpeedTestWindowController: NSWindowController {
+    private var pingLabel: NSTextField!
+    private var downloadLabel: NSTextField!
+    private var uploadLabel: NSTextField!
+    private var progressIndicator: NSProgressIndicator!
+    private var startButton: NSButton!
+    
+    convenience init() {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),
+                              styleMask: [.titled, .closable, .fullSizeContentView, .miniaturizable],
+                              backing: .buffered, defer: false)
+        window.center()
+        window.title = L10n.shared.speedTest
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        self.init(window: window)
+        setupUI()
+    }
+    
+    private func setupUI() {
+        let visualEffectView = NSVisualEffectView(frame: window!.contentView!.bounds)
+        visualEffectView.material = .windowBackground
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.state = .active
+        visualEffectView.autoresizingMask = [.width, .height]
+        window?.contentView = visualEffectView
+        
+        let titleLabel = NSTextField(labelWithString: L10n.shared.speedTestTitle)
+        titleLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        titleLabel.frame = NSRect(x: 20, y: 340, width: 600, height: 30)
+        titleLabel.alignment = .center
+        visualEffectView.addSubview(titleLabel)
+        
+        pingLabel = createValueLabel(title: L10n.shared.ping, unit: L10n.shared.ms, y: 260)
+        downloadLabel = createValueLabel(title: L10n.shared.download, unit: L10n.shared.mbps, y: 220)
+        uploadLabel = createValueLabel(title: L10n.shared.upload, unit: L10n.shared.mbps, y: 180)
+        
+        visualEffectView.addSubview(pingLabel)
+        visualEffectView.addSubview(downloadLabel)
+        visualEffectView.addSubview(uploadLabel)
+        
+        progressIndicator = NSProgressIndicator(frame: NSRect(x: 120, y: 140, width: 400, height: 20))
+        progressIndicator.style = .bar
+        progressIndicator.isIndeterminate = false
+        progressIndicator.minValue = 0
+        progressIndicator.maxValue = 100
+        progressIndicator.doubleValue = 0
+        progressIndicator.isDisplayedWhenStopped = true
+        visualEffectView.addSubview(progressIndicator)
+        
+        startButton = NSButton(title: L10n.shared.startTest, target: self, action: #selector(startClicked))
+        startButton.frame = NSRect(x: 220, y: 40, width: 200, height: 40)
+        startButton.bezelStyle = .rounded
+        startButton.controlSize = .large
+        visualEffectView.addSubview(startButton)
+    }
+    
+    private func createValueLabel(title: String, unit: String, y: CGFloat) -> NSTextField {
+        let label = NSTextField(labelWithString: "\(title): — \(unit)")
+        label.frame = NSRect(x: 20, y: y, width: 600, height: 24)
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.alignment = .center
+        return label
+    }
+    
+    @objc private func startClicked() {
+        if startButton.title == L10n.shared.startTest {
+            startButton.title = L10n.shared.stopTest
+            progressIndicator.startAnimation(nil)
+            
+            SpeedTestManager.shared.onUpdate = { [weak self] ping, down, up in
+                DispatchQueue.main.async {
+                    self?.pingLabel.stringValue = "\(L10n.shared.ping): \(Int(ping)) \(L10n.shared.ms)"
+                    self?.downloadLabel.stringValue = "\(L10n.shared.download): \(String(format: "%.2f", down)) \(L10n.shared.mbps)"
+                    self?.uploadLabel.stringValue = "\(L10n.shared.upload): \(String(format: "%.2f", up)) \(L10n.shared.mbps)"
+                }
+            }
+            
+            SpeedTestManager.shared.onFinished = { [weak self] in
+                DispatchQueue.main.async {
+                    self?.startButton.title = L10n.shared.startTest
+                    self?.progressIndicator.stopAnimation(nil)
+                }
+            }
+            
+            SpeedTestManager.shared.onError = { [weak self] error in
+                DispatchQueue.main.async {
+                    let alert = NSAlert()
+                    alert.messageText = "Error"
+                    alert.informativeText = error
+                    alert.runModal()
+                    self?.startButton.title = L10n.shared.startTest
+                    self?.progressIndicator.stopAnimation(nil)
+                }
+            }
+            
+            SpeedTestManager.shared.startTest()
+        } else {
+            SpeedTestManager.shared.stopTest()
+        }
+    }
+}
+
+// MARK: - Log Window
+class LogWindowController: NSWindowController {
+    private var textView: NSTextView!
+    private var scrollView: NSScrollView!
+    
+    convenience init() {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),
+                              styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
+                              backing: .buffered, defer: false)
+        window.center()
+        window.title = L10n.shared.logsTitle
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        self.init(window: window)
+        setupUI()
+        
+        LogStore.shared.onUpdate = { [weak self] in
+            DispatchQueue.main.async {
+                self?.updateLogs()
+            }
+        }
+        updateLogs()
+    }
+    
+    private func setupUI() {
+        let visualEffectView = NSVisualEffectView(frame: window!.contentView!.bounds)
+        visualEffectView.material = .sidebar
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.state = .active
+        visualEffectView.autoresizingMask = [.width, .height]
+        window?.contentView = visualEffectView
+        
+        scrollView = NSScrollView(frame: NSRect(x: 0, y: 50, width: 640, height: 350))
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.autoresizingMask = [.width, .height]
+        
+        textView = NSTextView(frame: scrollView.documentView?.bounds ?? scrollView.bounds)
+        textView.isEditable = false
+        textView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.autoresizingMask = [.width]
+        textView.drawsBackground = false
+        textView.textColor = .labelColor
+        
+        scrollView.documentView = textView
+        visualEffectView.addSubview(scrollView)
+        
+        let bottomBar = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 50))
+        bottomBar.autoresizingMask = [.width, .maxYMargin]
+        visualEffectView.addSubview(bottomBar)
+        
+        let clearBtn = NSButton(title: L10n.shared.clearLogs, target: self, action: #selector(clearLogs))
+        clearBtn.bezelStyle = .rounded
+        clearBtn.frame = NSRect(x: 20, y: 10, width: 120, height: 32)
+        bottomBar.addSubview(clearBtn)
+        
+        let copyBtn = NSButton(title: L10n.shared.copyLogs, target: self, action: #selector(copyLogs))
+        copyBtn.bezelStyle = .rounded
+        copyBtn.frame = NSRect(x: 150, y: 10, width: 120, height: 32)
+        bottomBar.addSubview(copyBtn)
+    }
+    
+    private func updateLogs() {
+        let text = LogStore.shared.getAllLogs()
+        let wasAtBottom = scrollView.verticalScroller?.floatValue ?? 1.0 > 0.95
+        
+        textView.string = text
+        
+        if wasAtBottom {
+            textView.scrollToEndOfDocument(nil)
+        }
+    }
+    
+    @objc private func clearLogs() {
+        LogStore.shared.clear()
+    }
+    
+    @objc private func copyLogs() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(LogStore.shared.getAllLogs(), forType: .string)
+    }
+}
+
 // MARK: - Help Window
 
 class HelpWindowController: NSWindowController {
     var webView: WKWebView!
     convenience init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 600), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.center(); window.title = L10n.shared.helpTitle
-        self.init(window: window); setupUI(); loadReadme()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 600), 
+                              styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.center()
+        window.title = L10n.shared.helpTitle
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        self.init(window: window)
+        setupUI()
+        loadReadme()
     }
     func setupUI() {
-        webView = WKWebView(frame: window!.contentView!.bounds)
+        let visualEffectView = NSVisualEffectView(frame: window!.contentView!.bounds)
+        visualEffectView.material = .sidebar
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.state = .active
+        visualEffectView.autoresizingMask = [.width, .height]
+        window?.contentView = visualEffectView
+        
+        webView = WKWebView(frame: visualEffectView.bounds)
         webView.autoresizingMask = [.width, .height]
         webView.setValue(false, forKey: "drawsBackground")
-        window?.contentView?.addSubview(webView)
+        visualEffectView.addSubview(webView)
     }
     func loadReadme() {
         guard let path = Bundle.main.path(forResource: "README", ofType: "md"), let content = try? String(contentsOfFile: path, encoding: .utf8) else {
@@ -1074,6 +1841,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: SettingsWindowController?
     var helpWindow: HelpWindowController?
     var loadingWindow: LoadingWindowController?
+    var speedTestWindow: SpeedTestWindowController?
+    var logWindow: LogWindowController?
     
     private var iconCache: [Bool: NSImage] = [:]
     private var lastRefreshTime: Date = .distantPast
@@ -1083,6 +1852,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupSignalHandlers()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         refreshUI()
+        
+        // Fail-safe: Restore settings on startup in case of previous crash
+        DPIKillerManager.shared.fullCleanup()
         
         // Ensure only one instance of loadingWindow exists
         if loadingWindow == nil { loadingWindow = LoadingWindowController() }
@@ -1197,6 +1969,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: DPIKillerManager.shared.isRunning ? L10n.shared.stop : L10n.shared.start, action: #selector(toggle), keyEquivalent: "t"))
+        menu.addItem(NSMenuItem(title: L10n.shared.diagTitle, action: #selector(runDiagnostics), keyEquivalent: "d"))
+        menu.addItem(NSMenuItem(title: L10n.shared.speedTest, action: #selector(showSpeedTest), keyEquivalent: "s"))
+        menu.addItem(NSMenuItem(title: L10n.shared.logsTitle, action: #selector(showLogs), keyEquivalent: "l"))
         menu.addItem(NSMenuItem(title: L10n.shared.settings, action: #selector(showSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: L10n.shared.updateCheck, action: #selector(checkUpdate), keyEquivalent: "u"))
         menu.addItem(NSMenuItem(title: L10n.shared.instructions, action: #selector(showHelp), keyEquivalent: "h"))
@@ -1213,11 +1988,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showSettings() { if settingsWindow == nil { settingsWindow = SettingsWindowController() }; NSApp.activate(ignoringOtherApps: true); settingsWindow?.showWindow(nil) }
     @objc func showHelp() { if helpWindow == nil { helpWindow = HelpWindowController() }; NSApp.activate(ignoringOtherApps: true); helpWindow?.showWindow(nil) }
+    @objc func showSpeedTest() { if speedTestWindow == nil { speedTestWindow = SpeedTestWindowController() }; NSApp.activate(ignoringOtherApps: true); speedTestWindow?.showWindow(nil) }
+    @objc func showLogs() { if logWindow == nil { logWindow = LogWindowController() }; NSApp.activate(ignoringOtherApps: true); logWindow?.showWindow(nil) }
+    
+    @objc func runDiagnostics() {
+        if loadingWindow == nil { loadingWindow = LoadingWindowController() }
+        loadingWindow?.updateStatus(L10n.shared.diagChecking)
+        loadingWindow?.showWithFade()
+        
+        DiagnosticsManager.shared.checkBypass { [weak self] success, error in
+            DispatchQueue.main.async {
+                self?.loadingWindow?.closeWithFade {
+                    self?.loadingWindow = nil
+                    let alert = NSAlert()
+                    alert.messageText = success ? L10n.shared.diagSuccess : L10n.shared.diagFailed
+                    alert.informativeText = error ?? ""
+                    NSApp.activate(ignoringOtherApps: true)
+                    alert.runModal()
+                }
+            }
+        }
+    }
+    
     @objc func checkUpdate() { GitHubUpdater.shared.checkForUpdates(manual: true) }
     
     func applicationWillTerminate(_ notification: Notification) {
-        if let p = DPIKillerManager.shared.process { p.terminate(); p.waitUntilExit() }
-        DPIKillerManager.shared.stop()
+        DPIKillerManager.shared.fullCleanup()
     }
 
     private func setupSignalHandlers() {
@@ -1225,10 +2021,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for sig in signals {
             signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-            source.setEventHandler { DPIKillerManager.shared.stop(); exit(0) }
+            source.setEventHandler { 
+                DPIKillerManager.shared.fullCleanup()
+                exit(0) 
+            }
             source.resume()
         }
     }
+}
+
+// Ensure cleanup on any exit
+atexit {
+    DPIKillerManager.shared.fullCleanup()
 }
 
 let app = NSApplication.shared
