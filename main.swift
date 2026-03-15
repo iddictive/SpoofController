@@ -1,6 +1,7 @@
 import Cocoa
 import Foundation
 import WebKit
+import Network
 
 // MARK: - Localization
 struct L10n {
@@ -431,11 +432,32 @@ class DPIKillerManager {
     private let watchdogInterval: UInt64 = 30 // seconds between checks
     private var lastRestartTime: Date?
     private let restartCooldown: TimeInterval = 60 // min seconds between auto-restarts
+
+    private var wasRunningBeforeDisconnect = false
+
+    init() {
+        NetworkMonitor.shared.onConnectivityRestored = { [weak self] in
+            guard let self = self else { return }
+            if self.wasRunningBeforeDisconnect {
+                print("[Manager] Auto-restarting after network restoration...")
+                self.start { success, error in
+                    if success {
+                        print("[Manager] Auto-restart success.")
+                    } else {
+                        print("[Manager] Auto-restart failed: \(error ?? "unknown")")
+                    }
+                    (NSApp.delegate as? AppDelegate)?.refreshUI()
+                }
+            }
+        }
+        NetworkMonitor.shared.start()
+    }
     
     func start(completion: @escaping (Bool, String?) -> Void) {
         if isRunning { stop() }
         killOrphans() // Ensure clean state
         isRunning = false
+        wasRunningBeforeDisconnect = true // Mark that we intend to be running
         
         let binaryPath = SettingsStore.shared.binaryPath
         print("[Manager] Starting with binary: \(binaryPath)")
@@ -618,6 +640,7 @@ class DPIKillerManager {
 
     func stop() {
         isRunning = false
+        wasRunningBeforeDisconnect = false // User manually stopped, don't auto-restart
         stopWatchdog()
         process?.terminate()
         process = nil
@@ -641,6 +664,44 @@ class DPIKillerManager {
         process.arguments = ["-c", script]
         try? process.run()
         process.waitUntilExit()
+    }
+}
+
+// MARK: - Network Monitor
+class NetworkMonitor {
+    static let shared = NetworkMonitor()
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "NetworkMonitorQueue")
+    private var lastPathStatus: NWPath.Status = .satisfied
+    
+    var onConnectivityRestored: (() -> Void)?
+    
+    init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self = self else { return }
+            
+            let status = path.status
+            print("[NetworkMonitor] Connection status: \(status)")
+            
+            // Если соединение восстановилось (было не satisfied, стало satisfied)
+            if self.lastPathStatus != .satisfied && status == .satisfied {
+                print("[NetworkMonitor] Connectivity restored. Notifying...")
+                // Даем 2 секунды на стабилизацию интерфейса (получение IP и т.д.)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    self.onConnectivityRestored?()
+                }
+            }
+            
+            self.lastPathStatus = status
+        }
+    }
+    
+    func start() {
+        monitor.start(queue: queue)
+    }
+    
+    func stop() {
+        monitor.cancel()
     }
 }
 
