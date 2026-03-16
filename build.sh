@@ -13,6 +13,23 @@ mkdir -p "${APP_BUNDLE}/Contents/Resources"
 # Compile code directly into bundle
 swiftc -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" main.swift -framework Cocoa -framework Foundation
 
+# Update version in Info.plist (v2.x)
+VERSION_FILE=".version"
+if [ ! -f "$VERSION_FILE" ]; then
+    echo "0" > "$VERSION_FILE"
+fi
+BUILD_NUM=$(cat "$VERSION_FILE")
+BUILD_NUM=$((BUILD_NUM + 1))
+echo "$BUILD_NUM" > "$VERSION_FILE"
+FULL_VERSION="2.0.${BUILD_NUM}"
+
+# Use plutil to update Info.plist if available, else use sed
+if command -v plutil >/dev/null 2>&1; then
+    plutil -replace CFBundleShortVersionString -string "$FULL_VERSION" Info.plist
+else
+    sed -i '' "s/<string>1.2.0<\/string>/<string>$FULL_VERSION<\/string>/" Info.plist
+fi
+
 # Copy Info.plist, Icon, and Assets
 cp Info.plist "${APP_BUNDLE}/Contents/Info.plist"
 cp assets/AppIcon.icns "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"

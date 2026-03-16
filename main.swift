@@ -128,6 +128,24 @@ struct L10n {
     // IPv6
     var disableIpv6: String { isRussian ? "Отключить IPv6 (рекомендуется)" : "Disable IPv6 (recommended)" }
     var ipv6Warning: String { isRussian ? "Предотвращает утечки трафика мимо прокси." : "Prevents traffic leakage bypassing the proxy." }
+
+    // Sections
+    var sectionCore: String { isRussian ? "📦 Основные настройки" : "📦 Core Settings" }
+    var sectionNetwork: String { isRussian ? "🌐 Сеть и Прокси" : "🌐 Network & Proxy" }
+    var sectionDPI: String { isRussian ? "🛡 Стратегия обхода" : "🛡 Bypass Strategy" }
+    var sectionDNS: String { isRussian ? "🧬 Настройки DNS" : "🧬 DNS Settings" }
+    var sectionApp: String { isRussian ? "📱 Поведение приложения" : "📱 App Behavior" }
+    var sectionManual: String { isRussian ? "🛠 Дополнительные флаги" : "🛠 Manual Flags" }
+
+    // Tooltips
+    var tipBinaryPath: String { isRussian ? "Полный путь к исполняемому файлу spoofdpi." : "Full path to the spoofdpi executable." }
+    var tipLocalPort: String { isRussian ? "Порт, который будет слушать локальный прокси (1-65535)." : "Port for the local proxy (1-65535)." }
+    var tipTTL: String { isRussian ? "Time To Live для пакетов. Помогает скрыть присутствие прокси (1-255)." : "Time To Live for packets. Helps hide proxy presence (1-255)." }
+    var tipSplitMode: String { isRussian ? "Способ разделения HTTPS пакетов." : "Method for splitting HTTPS packets." }
+    var tipFakeCount: String { isRussian ? "Количество фейковых пакетов для запутывания DPI (0-100)." : "Number of fake packets to confuse DPI (0-100)." }
+    var tipChunkSize: String { isRussian ? "Размер фрагмента данных в байтах (1-1000)." : "Size of data fragments in bytes (1-1000)." }
+    var tipDNSAddr: String { isRussian ? "Адрес DNS сервера (например, 8.8.8.8:53)." : "DNS server address (e.g., 8.8.8.8:53)." }
+    var tipDNSSystem: String { isRussian ? "Использовать системные настройки DNS." : "Use system DNS settings." }
 }
 
 // MARK: - Log Store (Circular Buffer)
@@ -578,6 +596,19 @@ class GitHubUpdater {
         process.arguments = ["-c", script]
         try? process.run()
         NSApp.terminate(nil)
+    }
+}
+
+// MARK: - Extensions
+extension NSView {
+    func fill(parent: NSView, padding: CGFloat = 0) {
+        self.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            self.topAnchor.constraint(equalTo: parent.topAnchor, constant: padding),
+            self.leadingAnchor.constraint(equalTo: parent.leadingAnchor, constant: padding),
+            self.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -padding),
+            self.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -padding)
+        ])
     }
 }
 
@@ -1129,251 +1160,388 @@ class SettingsWindowController: NSWindowController {
     ]
     
     convenience init() {
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        // Adaptive size: ~40% of screen width, bounded by reasonable min/max
+        let width = max(520, min(800, screen.width * 0.4))
+        let height = max(600, min(1000, screen.height * 0.7)) 
+        
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),
-            styleMask: [.titled, .closable, .fullSizeContentView, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.titled, .closable, .fullSizeContentView, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.center()
         window.title = L10n.shared.settingsTitle
+        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         self.init(window: window)
         setupUI()
     }
     
-    private func addSectionHeader(_ title: String, at y: inout CGFloat, to view: NSView) {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 13, weight: .bold)
-        label.textColor = .labelColor
-        label.frame = NSRect(x: 20, y: y, width: 600, height: 20)
-        view.addSubview(label)
-        y -= 25
+    private func createBox(title: String, spacing: CGFloat = 12) -> (NSBox, NSStackView) {
+        let box = NSBox()
+        box.titlePosition = .noTitle
+        box.boxType = .custom
+        box.borderWidth = 0
+        box.cornerRadius = 12
+        // Adaptive background (subtle transparent layer)
+        box.fillColor = NSColor.textColor.withAlphaComponent(0.05)
+        box.contentViewMargins = NSSize(width: 25, height: 20)
+        
+        let containerStack = NSStackView()
+        containerStack.orientation = .vertical
+        containerStack.alignment = .leading
+        containerStack.spacing = spacing
+        
+        let headerLabel = NSTextField(labelWithString: title)
+        headerLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        headerLabel.textColor = .labelColor
+        containerStack.addArrangedSubview(headerLabel)
+        
+        box.contentView?.addSubview(containerStack)
+        if let contentView = box.contentView {
+            containerStack.fill(parent: contentView)
+        }
+        
+        return (box, containerStack)
     }
-    
-    private func addSeparator(at y: inout CGFloat, to view: NSView) {
-        y -= 10
-        let box = NSBox(frame: NSRect(x: 20, y: y, width: 600, height: 1))
-        box.boxType = .separator
-        view.addSubview(box)
-        y -= 20
+
+    private func addRow(label: String, control: NSView, to stack: NSStackView, tooltip: String? = nil) {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .firstBaseline
+        row.spacing = 10
+        
+        let lbl = NSTextField(labelWithString: label)
+        lbl.font = .systemFont(ofSize: 12)
+        lbl.textColor = .secondaryLabelColor
+        lbl.alignment = .right
+        lbl.translatesAutoresizingMaskIntoConstraints = false
+        lbl.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        
+        control.translatesAutoresizingMaskIntoConstraints = false
+        if let tooltip = tooltip { control.toolTip = tooltip }
+        
+        row.addArrangedSubview(lbl)
+        row.addArrangedSubview(control)
+        stack.addArrangedSubview(row)
     }
-    
+
+    private func addCheckboxRow(button: NSButton, to stack: NSStackView) {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+        
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        
+        row.addArrangedSubview(spacer)
+        row.addArrangedSubview(button)
+        stack.addArrangedSubview(row)
+    }
+
     func setupUI() {
-        let visualEffectView = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 640, height: 400))
+        let visualEffectView = NSVisualEffectView()
         visualEffectView.material = .sidebar
         visualEffectView.blendingMode = .behindWindow
         visualEffectView.state = .active
         window?.contentView = visualEffectView
         
-        let scrollView = NSScrollView(frame: visualEffectView.bounds)
+        let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = false
-        scrollView.autoresizingMask = [.width, .height]
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
         visualEffectView.addSubview(scrollView)
         
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 1100))
+        // --- HEADER (Floating) ---
+        let headerEffect = NSVisualEffectView()
+        headerEffect.material = .titlebar
+        headerEffect.blendingMode = .withinWindow
+        headerEffect.state = .active
+        headerEffect.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.addSubview(headerEffect)
+        
+        let headerContainer = NSView()
+        headerContainer.translatesAutoresizingMaskIntoConstraints = false
+        headerEffect.addSubview(headerContainer)
+        
+        let headerTitle = NSTextField(labelWithString: L10n.shared.settingsTitle)
+        headerTitle.font = .systemFont(ofSize: 13, weight: .semibold)
+        headerTitle.textColor = .secondaryLabelColor
+        headerTitle.translatesAutoresizingMaskIntoConstraints = false
+        headerContainer.addSubview(headerTitle)
+        
+        let headerSeparator = NSBox()
+        headerSeparator.boxType = .separator
+        headerSeparator.translatesAutoresizingMaskIntoConstraints = false
+        headerContainer.addSubview(headerSeparator)
+        
+        // --- FOOTER (Floating) ---
+        let footerEffect = NSVisualEffectView()
+        footerEffect.material = .sidebar
+        footerEffect.blendingMode = .withinWindow
+        footerEffect.state = .active
+        footerEffect.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.addSubview(footerEffect)
+        
+        let footerContainer = NSView()
+        footerContainer.translatesAutoresizingMaskIntoConstraints = false
+        footerEffect.addSubview(footerContainer)
+        
+        let footerSeparator = NSBox()
+        footerSeparator.boxType = .separator
+        footerSeparator.translatesAutoresizingMaskIntoConstraints = false
+        footerContainer.addSubview(footerSeparator)
+        
+        let footerStack = NSStackView()
+        footerStack.orientation = .horizontal
+        footerStack.distribution = .fillEqually
+        footerStack.spacing = 15
+        footerStack.translatesAutoresizingMaskIntoConstraints = false
+        footerContainer.addSubview(footerStack)
+        
+        let contentView = NSView()
+        contentView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = contentView
         
-        var currentY: CGFloat = 1060
+        let mainStack = NSStackView()
+        mainStack.orientation = .vertical
+        mainStack.alignment = .centerX
+        mainStack.distribution = .fill
+        mainStack.spacing = 35
+        mainStack.edgeInsets = NSEdgeInsets(top: 30, left: 0, bottom: 30, right: 0) // Horizontal spacing managed by internal constraints
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(mainStack)
+        
+        // Helper to add a wide section (box) to the main stack safely
+        func addSection(_ view: NSView) {
+            mainStack.addArrangedSubview(view)
+            // Center the subview with exactly 30pt margin on both sides based on stack width
+            view.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -60).isActive = true
+        }
+        
+        NSLayoutConstraint.activate([
+            // Floating Header Constraints
+            headerEffect.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
+            headerEffect.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
+            headerEffect.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
+            headerEffect.heightAnchor.constraint(equalToConstant: 40),
+            
+            headerContainer.topAnchor.constraint(equalTo: headerEffect.topAnchor),
+            headerContainer.leadingAnchor.constraint(equalTo: headerEffect.leadingAnchor),
+            headerContainer.trailingAnchor.constraint(equalTo: headerEffect.trailingAnchor),
+            headerContainer.bottomAnchor.constraint(equalTo: headerEffect.bottomAnchor),
+            
+            headerTitle.centerXAnchor.constraint(equalTo: headerContainer.centerXAnchor),
+            headerTitle.centerYAnchor.constraint(equalTo: headerContainer.centerYAnchor, constant: 0),
+            
+            headerSeparator.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor),
+            headerSeparator.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor),
+            headerSeparator.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor),
+            
+            // Floating Footer Constraints
+            footerEffect.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
+            footerEffect.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
+            footerEffect.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
+            footerEffect.heightAnchor.constraint(equalToConstant: 60),
+            
+            footerContainer.topAnchor.constraint(equalTo: footerEffect.topAnchor),
+            footerContainer.leadingAnchor.constraint(equalTo: footerEffect.leadingAnchor),
+            footerContainer.trailingAnchor.constraint(equalTo: footerEffect.trailingAnchor),
+            footerContainer.bottomAnchor.constraint(equalTo: footerEffect.bottomAnchor),
+            
+            footerSeparator.topAnchor.constraint(equalTo: footerContainer.topAnchor),
+            footerSeparator.leadingAnchor.constraint(equalTo: footerContainer.leadingAnchor),
+            footerSeparator.trailingAnchor.constraint(equalTo: footerContainer.trailingAnchor),
+            
+            footerStack.centerXAnchor.constraint(equalTo: footerContainer.centerXAnchor),
+            footerStack.centerYAnchor.constraint(equalTo: footerContainer.centerYAnchor),
+            footerStack.widthAnchor.constraint(equalTo: footerContainer.widthAnchor, constant: -60), // Match 30pt margins
+            
+            // ScrollView Constraints (between header and footer)
+            scrollView.topAnchor.constraint(equalTo: headerEffect.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: footerEffect.topAnchor),
+            
+            contentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            contentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            
+            mainStack.topAnchor.constraint(equalTo: contentView.topAnchor),
+            mainStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            mainStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            mainStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            
+            // Fix: Let contentView match scrollView exactly, so mainStack's internal sizing centers it
+            contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+            
+            // Re-pin trailing edge to ensure it stays in the scroll area
+            mainStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
+        ])
         
         // --- SECTION 1: CORE ---
-        addSectionHeader(L10n.shared.binaryPath, at: &currentY, to: contentView)
-        pathField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 600, height: 24))
+        let (coreBox, coreStack) = createBox(title: L10n.shared.sectionCore)
+        pathField = NSTextField()
         pathField.stringValue = SettingsStore.shared.binaryPath
         pathField.placeholderString = L10n.shared.binaryPlaceholder
-        contentView.addSubview(pathField)
-        currentY -= 40
+        addRow(label: L10n.shared.binaryPath, control: pathField, to: coreStack, tooltip: L10n.shared.tipBinaryPath)
+        addSection(coreBox)
         
-        // --- SECTION 2: HOTSPOT OPTIMIZATION ---
-        addSeparator(at: &currentY, to: contentView)
-        addSectionHeader("Mobile Hotspot Strategy", at: &currentY, to: contentView)
+        // --- SECTION 2: NETWORK ---
+        let (netBox, netStack) = createBox(title: L10n.shared.sectionNetwork)
         
-        let statusLabel = NSTextField(labelWithString: L10n.shared.hotspotStatusTitle)
-        statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.frame = NSRect(x: 20, y: currentY, width: 140, height: 20)
-        contentView.addSubview(statusLabel)
-        
+        let statusRow = NSStackView()
+        statusRow.orientation = .horizontal
+        statusRow.spacing = 10
+        let statusTitle = NSTextField(labelWithString: L10n.shared.hotspotStatusTitle)
+        statusTitle.font = .systemFont(ofSize: 12)
         hotspotStatusLabel = NSTextField(labelWithString: L10n.shared.diagChecking)
         hotspotStatusLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-        hotspotStatusLabel.frame = NSRect(x: 160, y: currentY, width: 220, height: 20)
-        contentView.addSubview(hotspotStatusLabel)
+        statusRow.addArrangedSubview(statusTitle)
+        statusRow.addArrangedSubview(hotspotStatusLabel)
+        netStack.addArrangedSubview(statusRow)
         
         hotspotFixButton = NSButton(title: "🛠 \(L10n.shared.fixHotspotButton)", target: self, action: #selector(fixHotspotAction))
         hotspotFixButton.bezelStyle = .rounded
-        hotspotFixButton.frame = NSRect(x: 390, y: currentY - 5, width: 230, height: 28)
         hotspotFixButton.isHidden = true
-        contentView.addSubview(hotspotFixButton)
-        currentY -= 35
+        netStack.addArrangedSubview(hotspotFixButton)
         
         let presetBtn = NSButton(title: "⚡️ \(L10n.shared.mobilePresetTitle)", target: self, action: #selector(applyMobilePreset))
         presetBtn.bezelStyle = .rounded
-        presetBtn.controlSize = .large
-        presetBtn.isHighlighted = true
-        presetBtn.frame = NSRect(x: 20, y: currentY, width: 600, height: 32)
-        contentView.addSubview(presetBtn)
-        currentY -= 45
+        netStack.addArrangedSubview(presetBtn)
+        
+        portField = NSTextField()
+        portField.stringValue = SettingsStore.shared.localPort
+        portField.widthAnchor.constraint(equalToConstant: 100).isActive = true
+        addRow(label: L10n.shared.portTitle, control: portField, to: netStack, tooltip: L10n.shared.tipLocalPort)
+        addSection(netBox)
         
         updateHotspotStatus()
         
         // --- SECTION 3: DPI STRATEGY ---
-        addSeparator(at: &currentY, to: contentView)
-        addSectionHeader(L10n.shared.argumentsTitle, at: &currentY, to: contentView)
-        
+        let (dpiBox, dpiStack) = createBox(title: L10n.shared.sectionDPI)
         let selected = SettingsStore.shared.selectedFlags
         for option in options {
             let cb = NSButton(checkboxWithTitle: option.flag, target: nil, action: nil)
-            cb.frame = NSRect(x: 20, y: currentY, width: 160, height: 20)
             cb.state = selected.contains(option.flag) ? .on : .off
-            contentView.addSubview(cb)
             checkboxes.append(cb)
+            
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.spacing = 10
+            
+            // Standard Gutter Spacer
+            let spacer = NSView()
+            spacer.translatesAutoresizingMaskIntoConstraints = false
+            spacer.widthAnchor.constraint(equalToConstant: 140).isActive = true
+            row.addArrangedSubview(spacer)
+            
+            row.addArrangedSubview(cb)
             
             let desc = NSTextField(labelWithString: "— \(option.description)")
             desc.font = .systemFont(ofSize: 11)
             desc.textColor = .secondaryLabelColor
-            desc.frame = NSRect(x: 185, y: currentY, width: 440, height: 18)
-            contentView.addSubview(desc)
-            currentY -= 22
+            row.addArrangedSubview(desc)
+            
+            dpiStack.addArrangedSubview(row)
         }
-        currentY -= 15
         
-        // Packet TTL & Port
-        let ttlLabel = NSTextField(labelWithString: L10n.shared.ttlTitle)
-        ttlLabel.frame = NSRect(x: 20, y: currentY, width: 110, height: 20)
-        contentView.addSubview(ttlLabel)
-        
-        ttlField = NSTextField(frame: NSRect(x: 135, y: currentY - 2, width: 80, height: 22))
+        ttlField = NSTextField()
         ttlField.stringValue = SettingsStore.shared.defaultTTL
-        contentView.addSubview(ttlField)
+        ttlField.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        addRow(label: L10n.shared.ttlTitle, control: ttlField, to: dpiStack, tooltip: L10n.shared.tipTTL)
         
-        let pLabel = NSTextField(labelWithString: L10n.shared.portTitle)
-        pLabel.frame = NSRect(x: 240, y: currentY, width: 100, height: 20)
-        contentView.addSubview(pLabel)
-        
-        portField = NSTextField(frame: NSRect(x: 345, y: currentY - 2, width: 80, height: 22))
-        portField.stringValue = SettingsStore.shared.localPort
-        contentView.addSubview(portField)
-        currentY -= 35
-        
-        // Split Mode
-        let smLabel = NSTextField(labelWithString: L10n.shared.splitModeTitle)
-        smLabel.frame = NSRect(x: 20, y: currentY, width: 180, height: 20)
-        contentView.addSubview(smLabel)
-        
-        splitModeButton = NSPopUpButton(frame: NSRect(x: 205, y: currentY - 2, width: 120, height: 22), pullsDown: false)
+        splitModeButton = NSPopUpButton(frame: .zero, pullsDown: false)
         splitModeButton.addItems(withTitles: ["sni", "random", "chunk", "none"])
         splitModeButton.selectItem(withTitle: SettingsStore.shared.splitMode)
-        contentView.addSubview(splitModeButton)
-        currentY -= 35
+        addRow(label: L10n.shared.splitModeTitle, control: splitModeButton, to: dpiStack, tooltip: L10n.shared.tipSplitMode)
         
-        // --- SECTION 4: HTTPS FRAGMENTATION ---
-        addSeparator(at: &currentY, to: contentView)
-        addSectionHeader("HTTPS Bypass Strategy", at: &currentY, to: contentView)
+        // Disorder and Fake count row
+        let disorderStack = NSStackView()
+        disorderStack.orientation = .horizontal
+        disorderStack.alignment = .centerY
+        disorderStack.spacing = 10
         
-        let disorderLabel = NSTextField(labelWithString: L10n.shared.httpsDisorder)
-        disorderLabel.frame = NSRect(x: 20, y: currentY, width: 180, height: 20)
-        contentView.addSubview(disorderLabel)
+        // Gutter Spacer for consistent horizontal alignment
+        let disorderSpacer = NSView()
+        disorderSpacer.translatesAutoresizingMaskIntoConstraints = false
+        disorderSpacer.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        disorderStack.addArrangedSubview(disorderSpacer)
         
-        httpsDisorderButton = NSButton(checkboxWithTitle: "", target: nil, action: nil)
-        httpsDisorderButton.frame = NSRect(x: 205, y: currentY, width: 22, height: 20)
+        httpsDisorderButton = NSButton(checkboxWithTitle: L10n.shared.httpsDisorder, target: nil, action: nil)
         httpsDisorderButton.state = SettingsStore.shared.httpsDisorder ? .on : .off
-        contentView.addSubview(httpsDisorderButton)
-        currentY -= 30
+        disorderStack.addArrangedSubview(httpsDisorderButton)
+        
+        let flexibleSpacer = NSView()
+        disorderStack.addArrangedSubview(flexibleSpacer)
+        
+        let fakeCountStack = NSStackView()
+        fakeCountStack.orientation = .horizontal
+        fakeCountStack.alignment = .centerY
+        fakeCountStack.spacing = 8
         
         let fakeLabel = NSTextField(labelWithString: L10n.shared.httpsFakeCount)
-        fakeLabel.frame = NSRect(x: 20, y: currentY, width: 180, height: 20)
-        contentView.addSubview(fakeLabel)
-        
-        httpsFakeCountField = NSTextField(frame: NSRect(x: 205, y: currentY - 2, width: 80, height: 22))
+        fakeLabel.font = .systemFont(ofSize: 12)
+        httpsFakeCountField = NSTextField()
         httpsFakeCountField.stringValue = SettingsStore.shared.httpsFakeCount
-        contentView.addSubview(httpsFakeCountField)
-        currentY -= 30
+        httpsFakeCountField.widthAnchor.constraint(equalToConstant: 40).isActive = true
         
-        let chunkSizeLabel = NSTextField(labelWithString: L10n.shared.httpsChunkSize)
-        chunkSizeLabel.frame = NSRect(x: 20, y: currentY, width: 180, height: 20)
-        contentView.addSubview(chunkSizeLabel)
+        fakeCountStack.addArrangedSubview(fakeLabel)
+        fakeCountStack.addArrangedSubview(httpsFakeCountField)
+        disorderStack.addArrangedSubview(fakeCountStack)
         
-        httpsChunkSizeField = NSTextField(frame: NSRect(x: 205, y: currentY - 2, width: 80, height: 22))
+        dpiStack.addArrangedSubview(disorderStack)
+        
+        httpsChunkSizeField = NSTextField()
         httpsChunkSizeField.stringValue = SettingsStore.shared.httpsChunkSize
-        contentView.addSubview(httpsChunkSizeField)
-        currentY -= 40
+        httpsChunkSizeField.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        addRow(label: L10n.shared.httpsChunkSize, control: httpsChunkSizeField, to: dpiStack, tooltip: L10n.shared.tipChunkSize)
+        addSection(dpiBox)
         
-        // --- SECTION 5: DNS ---
-        addSeparator(at: &currentY, to: contentView)
-        addSectionHeader(L10n.shared.dnsTitle, at: &currentY, to: contentView)
-        
-        let daLabel = NSTextField(labelWithString: L10n.shared.dnsAddrTitle)
-        daLabel.frame = NSRect(x: 20, y: currentY, width: 140, height: 20)
-        contentView.addSubview(daLabel)
-        dnsAddrField = NSTextField(frame: NSRect(x: 160, y: currentY - 2, width: 440, height: 22))
+        // --- SECTION 4: DNS ---
+        let (dnsBox, dnsStack) = createBox(title: L10n.shared.sectionDNS)
+        dnsAddrField = NSTextField()
         dnsAddrField.stringValue = SettingsStore.shared.dnsAddr
-        contentView.addSubview(dnsAddrField)
-        currentY -= 30
+        addRow(label: L10n.shared.dnsAddrTitle, control: dnsAddrField, to: dnsStack, tooltip: L10n.shared.tipDNSAddr)
         
-        let dmLabel = NSTextField(labelWithString: L10n.shared.dnsModeTitle)
-        dmLabel.frame = NSRect(x: 20, y: currentY, width: 140, height: 20)
-        contentView.addSubview(dmLabel)
-        dnsModeButton = NSPopUpButton(frame: NSRect(x: 160, y: currentY - 2, width: 140, height: 22), pullsDown: false)
+        dnsModeButton = NSPopUpButton(frame: .zero, pullsDown: false)
         dnsModeButton.addItems(withTitles: ["udp", "https", "system"])
         dnsModeButton.selectItem(withTitle: SettingsStore.shared.dnsMode)
-        contentView.addSubview(dnsModeButton)
-        currentY -= 30
+        addRow(label: L10n.shared.dnsModeTitle, control: dnsModeButton, to: dnsStack)
         
-        let dhLabel = NSTextField(labelWithString: "DoH/DoT URL:")
-        dhLabel.frame = NSRect(x: 20, y: currentY, width: 140, height: 20)
-        contentView.addSubview(dhLabel)
-        dnsHttpsUrlField = NSTextField(frame: NSRect(x: 160, y: currentY - 2, width: 440, height: 22))
+        dnsHttpsUrlField = NSTextField()
         dnsHttpsUrlField.stringValue = SettingsStore.shared.dnsHttpsUrl
-        contentView.addSubview(dnsHttpsUrlField)
-        currentY -= 45
+        addRow(label: "DoH/DoT URL:", control: dnsHttpsUrlField, to: dnsStack)
+        addSection(dnsBox)
         
-        // --- SECTION 6: SYSTEM ---
-        addSeparator(at: &currentY, to: contentView)
-        addSectionHeader("Application Behavior", at: &currentY, to: contentView)
+        // --- SECTION 5: APP BEHAVIOR ---
+        let (appBox, appStack) = createBox(title: L10n.shared.sectionApp, spacing: 5)
+        let loginCb = NSButton(checkboxWithTitle: L10n.shared.launchAtLogin, target: self, action: #selector(toggleLoginItem))
+        loginCb.state = SettingsStore.shared.launchAtLogin ? .on : .off
+        addCheckboxRow(button: loginCb, to: appStack)
         
-        let loginCheckbox = NSButton(checkboxWithTitle: L10n.shared.launchAtLogin, target: self, action: #selector(toggleLoginItem))
-        loginCheckbox.frame = NSRect(x: 20, y: currentY, width: 600, height: 20)
-        loginCheckbox.state = SettingsStore.shared.launchAtLogin ? .on : .off
-        contentView.addSubview(loginCheckbox)
-        currentY -= 25
+        let updateCb = NSButton(checkboxWithTitle: L10n.shared.autoUpdateToggle, target: self, action: #selector(toggleUpdateItem))
+        updateCb.state = SettingsStore.shared.autoUpdate ? .on : .off
+        addCheckboxRow(button: updateCb, to: appStack)
         
-        let updateCheckbox = NSButton(checkboxWithTitle: L10n.shared.autoUpdateToggle, target: self, action: #selector(toggleUpdateItem))
-        updateCheckbox.frame = NSRect(x: 20, y: currentY, width: 600, height: 20)
-        updateCheckbox.state = SettingsStore.shared.autoUpdate ? .on : .off
-        contentView.addSubview(updateCheckbox)
-        currentY -= 22
+        let ipv6Cb = NSButton(checkboxWithTitle: L10n.shared.disableIpv6, target: self, action: #selector(toggleIpv6))
+        ipv6Cb.state = SettingsStore.shared.disableIpv6 ? .on : .off
+        addCheckboxRow(button: ipv6Cb, to: appStack)
+        addSection(appBox)
         
-        let downloadCheckbox = NSButton(checkboxWithTitle: L10n.shared.autoDownloadToggle, target: self, action: #selector(toggleDownloadItem))
-        downloadCheckbox.frame = NSRect(x: 20, y: currentY, width: 600, height: 20)
-        downloadCheckbox.state = SettingsStore.shared.autoDownload ? .on : .off
-        downloadCheckbox.isEnabled = SettingsStore.shared.autoUpdate
-        contentView.addSubview(downloadCheckbox)
-        currentY -= 25
-        
-        let ipv6Checkbox = NSButton(checkboxWithTitle: L10n.shared.disableIpv6, target: self, action: #selector(toggleIpv6))
-        ipv6Checkbox.frame = NSRect(x: 20, y: currentY, width: 600, height: 20)
-        ipv6Checkbox.state = SettingsStore.shared.disableIpv6 ? .on : .off
-        contentView.addSubview(ipv6Checkbox)
-        currentY -= 16
-        
-        let ipv6Desc = NSTextField(labelWithString: L10n.shared.ipv6Warning)
-        ipv6Desc.font = .systemFont(ofSize: 11)
-        ipv6Desc.textColor = .secondaryLabelColor
-        ipv6Desc.frame = NSRect(x: 40, y: currentY, width: 580, height: 18)
-        contentView.addSubview(ipv6Desc)
-        currentY -= 40
-        
-        // --- SECTION 7: ADVANCED ---
-        addSeparator(at: &currentY, to: contentView)
-        addSectionHeader(L10n.shared.manualArgsTitle, at: &currentY, to: contentView)
-        
-        manualArgsField = NSTextField(frame: NSRect(x: 20, y: currentY, width: 600, height: 24))
+        // --- SECTION 6: MANUAL ---
+        let (manualBox, manualStack) = createBox(title: L10n.shared.sectionManual)
+        manualArgsField = NSTextField()
         let allArgs = SettingsStore.shared.customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
         var manualParts: [String] = []
         var i = 0
         while i < allArgs.count {
             let arg = allArgs[i]
-            if arg == "--default-ttl" || arg == "--https-split-mode" || arg == "--listen-addr" || arg == "--dns-addr" || arg == "--dns-mode" || arg == "--dns-https-url" || arg == "--https-disorder" || arg == "--https-fake-count" || arg == "--https-chunk-size" {
-                // Skip flag and its potential value if it's already covered by UI
+            if ["--default-ttl", "--https-split-mode", "--listen-addr", "--dns-addr", "--dns-mode", "--dns-https-url", "--https-disorder", "--https-fake-count", "--https-chunk-size"].contains(arg) {
                 i += 1 
                 if i < allArgs.count && !allArgs[i].hasPrefix("-") { i += 1 }
             } else if options.contains(where: { $0.flag == arg }) {
@@ -1385,29 +1553,23 @@ class SettingsWindowController: NSWindowController {
         }
         manualArgsField.stringValue = manualParts.joined(separator: " ")
         manualArgsField.placeholderString = L10n.shared.manualArgsPlaceholder
-        contentView.addSubview(manualArgsField)
-        currentY -= 45
-        
-        // --- FOOTER: ACTIONS ---
-        addSeparator(at: &currentY, to: contentView)
+        manualStack.addArrangedSubview(manualArgsField)
+        manualArgsField.widthAnchor.constraint(equalTo: manualStack.widthAnchor).isActive = true
+        addSection(manualBox)
         
         let cancelBtn = NSButton(title: L10n.shared.cancel, target: self, action: #selector(cancelAction))
-        cancelBtn.frame = NSRect(x: 20, y: currentY - 5, width: 290, height: 32)
         cancelBtn.bezelStyle = .rounded
-        contentView.addSubview(cancelBtn)
         
         let saveButton = NSButton(title: L10n.shared.saveAndRestart, target: self, action: #selector(save))
-        saveButton.frame = NSRect(x: 330, y: currentY - 5, width: 290, height: 32)
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "\r"
-        contentView.addSubview(saveButton)
         
-        currentY -= 50
-        contentView.frame.size.height = 1060 - currentY + 20
+        footerStack.addArrangedSubview(cancelBtn)
+        footerStack.addArrangedSubview(saveButton)
     }
-    
+
     @objc func cancelAction() {
-        window?.close()
+        self.window?.close()
     }
     
     @objc func applyMobilePreset() {
@@ -1468,7 +1630,7 @@ class SettingsWindowController: NSWindowController {
         do {
             try task.run()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines),
                let val = Int(output) {
                 return val
             }
@@ -1499,19 +1661,30 @@ class SettingsWindowController: NSWindowController {
         for (index, cb) in checkboxes.enumerated() {
             if cb.state == .on { flags.insert(options[index].flag) }
         }
+        
+        // Clamping logic
+        let rawPort = Int(portField.stringValue.trimmingCharacters(in: CharacterSet.whitespaces)) ?? 8080
+        let clampedPort = min(max(rawPort, 1), 65535)
+        
+        let rawTTL = Int(ttlField.stringValue.trimmingCharacters(in: CharacterSet.whitespaces)) ?? 128
+        let clampedTTL = min(max(rawTTL, 1), 255)
+        
+        let rawFakeCount = Int(httpsFakeCountField.stringValue.trimmingCharacters(in: CharacterSet.whitespaces)) ?? 0
+        let clampedFakeCount = min(max(rawFakeCount, 0), 100)
+        
+        let rawChunkSize = Int(httpsChunkSizeField.stringValue.trimmingCharacters(in: CharacterSet.whitespaces)) ?? 100
+        let clampedChunkSize = min(max(rawChunkSize, 1), 1000)
+
         SettingsStore.shared.binaryPath = pathField.stringValue
-        SettingsStore.shared.defaultTTL = ttlField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsStore.shared.defaultTTL = String(clampedTTL)
         SettingsStore.shared.splitMode = splitModeButton.titleOfSelectedItem ?? "sni"
         SettingsStore.shared.httpsDisorder = httpsDisorderButton.state == .on
-        SettingsStore.shared.httpsFakeCount = httpsFakeCountField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        SettingsStore.shared.httpsChunkSize = httpsChunkSizeField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        SettingsStore.shared.localPort = portField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        SettingsStore.shared.dnsAddr = dnsAddrField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsStore.shared.httpsFakeCount = String(clampedFakeCount)
+        SettingsStore.shared.httpsChunkSize = String(clampedChunkSize)
+        SettingsStore.shared.localPort = String(clampedPort)
+        SettingsStore.shared.dnsAddr = dnsAddrField.stringValue.trimmingCharacters(in: CharacterSet.whitespaces)
         SettingsStore.shared.dnsMode = dnsModeButton.titleOfSelectedItem ?? "udp"
-        SettingsStore.shared.dnsHttpsUrl = dnsHttpsUrlField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Re-apply IPv6 settings just in case
-        SettingsStore.shared.disableIpv6 = SettingsStore.shared.disableIpv6
+        SettingsStore.shared.dnsHttpsUrl = dnsHttpsUrlField.stringValue.trimmingCharacters(in: CharacterSet.whitespaces)
         
         SettingsStore.shared.updateArgs(with: flags, manual: manualArgsField.stringValue, 
                                         ttl: SettingsStore.shared.defaultTTL, 
@@ -1530,7 +1703,7 @@ class SettingsWindowController: NSWindowController {
                 }
             }
         }
-        window?.close()
+        self.window?.close()
     }
 }
 
@@ -2039,3 +2212,10 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
+
+// MARK: - Extension for Clamping
+extension Comparable {
+    func clamped(to limits: ClosedRange<Self>) -> Self {
+        return min(max(self, limits.lowerBound), limits.upperBound)
+    }
+}
