@@ -690,6 +690,10 @@ class DPIKillerManager {
         
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                return
+            }
             if let str = String(data: data, encoding: .utf8), !str.isEmpty {
                 LogStore.shared.append(str)
             }
@@ -2039,6 +2043,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var iconCache: [Bool: NSImage] = [:]
     private var lastRefreshTime: Date = .distantPast
     private let refreshThrottleInterval: TimeInterval = 0.5
+    private var refreshPending = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupSignalHandlers()
@@ -2133,7 +2138,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func refreshUI() {
         let now = Date()
         if now.timeIntervalSince(lastRefreshTime) < refreshThrottleInterval {
-            DispatchQueue.main.asyncAfter(deadline: .now() + refreshThrottleInterval) { [weak self] in self?.refreshUI() }
+            if !refreshPending {
+                refreshPending = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + refreshThrottleInterval) { [weak self] in 
+                    self?.refreshPending = false
+                    self?.refreshUI() 
+                }
+            }
             return
         }
         lastRefreshTime = now
