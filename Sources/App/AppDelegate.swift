@@ -19,6 +19,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         refreshUI()
 
+        if CommandLine.arguments.contains("--open-settings") {
+            DispatchQueue.main.async { [weak self] in
+                self?.showSettings()
+            }
+        }
+
         if loadingWindow == nil {
             loadingWindow = LoadingWindowController()
         }

@@ -111,7 +111,7 @@ enum AppTheme {
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        separator.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
         return separator
     }
 }

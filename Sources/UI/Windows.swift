@@ -7,7 +7,64 @@ struct ArgumentOption {
     let description: String
 }
 
+final class FixedSizeWindow: NSWindow {
+    var fixedFrameSize: NSSize?
+
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        super.setFrame(clampedFrame(frameRect), display: flag)
+    }
+
+    override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool) {
+        super.setFrame(clampedFrame(frameRect), display: displayFlag, animate: animateFlag)
+    }
+
+    private func clampedFrame(_ frameRect: NSRect) -> NSRect {
+        guard let fixedFrameSize else { return frameRect }
+        return NSRect(origin: frameRect.origin, size: fixedFrameSize)
+    }
+}
+
+final class SettingsSectionView: NSView {
+    let stack = NSStackView()
+
+    init(title: String, subtitle: String? = nil) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.cornerRadius = 14
+        layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.32).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.16).cgColor
+
+        stack.orientation = .vertical
+        stack.spacing = 12
+        stack.alignment = .leading
+        addSubview(stack)
+        stack.fill(parent: self, padding: 14)
+
+        let headerStack = NSStackView()
+        headerStack.orientation = .vertical
+        headerStack.spacing = 3
+        headerStack.alignment = .leading
+        headerStack.addArrangedSubview(AppTheme.makeSectionTitle(title))
+        if let subtitle, !subtitle.isEmpty {
+            headerStack.addArrangedSubview(AppTheme.makeSecondaryText(subtitle))
+        }
+
+        stack.addArrangedSubview(headerStack)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
 final class SettingsWindowController: NSWindowController {
+    private static let defaultContentSize = NSSize(width: 620, height: 580)
+
+    private let formLabelWidth: CGFloat = 124
+    private let fixedContentSize = SettingsWindowController.defaultContentSize
+
     var pathField: NSTextField!
     var manualArgsField: NSTextField!
     var ttlField: NSTextField!
@@ -32,21 +89,51 @@ final class SettingsWindowController: NSWindowController {
     ]
 
     convenience init() {
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let width = max(560, min(680, screen.width * 0.40))
-        let height = max(620, min(780, screen.height * 0.78))
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow],
+        let window = FixedSizeWindow(
+            contentRect: NSRect(origin: .zero, size: SettingsWindowController.defaultContentSize),
+            styleMask: [.titled, .closable, .miniaturizable, .utilityWindow],
             backing: .buffered,
             defer: false
         )
         window.center()
         window.title = L10n.shared.settingsTitle
-        AppTheme.styleWindow(window, minSize: NSSize(width: 560, height: 620))
+        AppTheme.styleWindow(window, minSize: SettingsWindowController.defaultContentSize)
+        window.fixedFrameSize = window.frameRect(
+            forContentRect: NSRect(origin: .zero, size: SettingsWindowController.defaultContentSize)
+        ).size
         self.init(window: window)
+        enforceFixedWindowSize(center: true)
         setupUI()
+    }
+
+    override func showWindow(_ sender: Any?) {
+        let shouldCenter = window?.isVisible != true
+        super.showWindow(sender)
+        enforceFixedWindowSize(center: shouldCenter)
+        DispatchQueue.main.async { [weak self] in
+            self?.enforceFixedWindowSize(center: false)
+        }
+        window?.level = .normal
+    }
+
+    private func enforceFixedWindowSize(center: Bool) {
+        guard let window else { return }
+        let frameSize = (window as? FixedSizeWindow)?.fixedFrameSize
+            ?? window.frameRect(forContentRect: NSRect(origin: .zero, size: fixedContentSize)).size
+        window.styleMask.remove(.resizable)
+        window.minSize = fixedContentSize
+        window.maxSize = fixedContentSize
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+
+        let targetFrame = NSRect(origin: .zero, size: frameSize)
+        let currentOrigin = center ? NSPoint(x: window.frame.origin.x, y: window.frame.origin.y) : window.frame.origin
+        let frame = NSRect(origin: currentOrigin, size: targetFrame.size)
+        window.setFrame(frame, display: false)
+        window.setContentSize(fixedContentSize)
+        if center {
+            window.center()
+        }
     }
 
     func setupUI() {
@@ -55,17 +142,19 @@ final class SettingsWindowController: NSWindowController {
 
         let rootStack = NSStackView()
         rootStack.orientation = .vertical
-        rootStack.spacing = 14
+        rootStack.spacing = 12
         rootStack.alignment = .leading
         background.addSubview(rootStack)
-        rootStack.fill(parent: background, padding: 20)
+        rootStack.fill(parent: background, padding: 16)
 
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420).isActive = true
+        scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 360).isActive = true
 
         let footerStack = NSStackView()
         footerStack.orientation = .horizontal
@@ -89,7 +178,7 @@ final class SettingsWindowController: NSWindowController {
 
         let mainStack = NSStackView()
         mainStack.orientation = .vertical
-        mainStack.spacing = 22
+        mainStack.spacing = 16
         mainStack.alignment = .leading
         contentView.addSubview(mainStack)
         mainStack.translatesAutoresizingMaskIntoConstraints = false
@@ -106,13 +195,13 @@ final class SettingsWindowController: NSWindowController {
             contentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
             contentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
             contentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-            contentView.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+            contentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
 
-            mainStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            mainStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
             mainStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             mainStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            mainStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24)
+            mainStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12)
         ])
 
         func addSection(_ section: NSView) {
@@ -122,30 +211,23 @@ final class SettingsWindowController: NSWindowController {
 
         let coreSection = createSection(
             title: L10n.shared.sectionCore,
-            subtitle: L10n.shared.isRussian ? "Где брать `spoofdpi` и как запускать его с нужными аргументами." : "Where `spoofdpi` is loaded from and how it is launched."
+            subtitle: L10n.shared.isRussian
+                ? "Путь к бинарнику и базовая конфигурация запуска."
+                : "Binary path and base launch configuration."
         )
         pathField = themedTextField(value: SettingsStore.shared.binaryPath, placeholder: L10n.shared.binaryPlaceholder)
-        addRow(label: L10n.shared.binaryPath, control: pathField, to: coreSection, tooltip: L10n.shared.tipBinaryPath)
+        addRow(label: L10n.shared.binaryPath, control: pathField, to: coreSection.stack, tooltip: L10n.shared.tipBinaryPath)
         addSection(coreSection)
 
         let networkSection = createSection(
             title: L10n.shared.sectionNetwork,
-            subtitle: L10n.shared.isRussian ? "Локальный порт, хотспот и быстрые пресеты под мобильную раздачу." : "Local port, hotspot state, and mobile tethering presets."
+            subtitle: L10n.shared.isRussian
+                ? "Порт, статус хотспота и быстрые действия."
+                : "Port, hotspot status, and quick actions."
         )
-
-        let statusRow = NSStackView()
-        statusRow.orientation = .horizontal
-        statusRow.spacing = 10
-        statusRow.alignment = .centerY
-        let statusTitle = NSTextField(labelWithString: L10n.shared.hotspotStatusTitle)
-        statusTitle.font = .systemFont(ofSize: 12, weight: .medium)
-        statusTitle.textColor = AppTheme.textSecondary
         hotspotStatusLabel = NSTextField(labelWithString: L10n.shared.diagChecking)
         hotspotStatusLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-        statusRow.addArrangedSubview(statusTitle)
-        statusRow.addArrangedSubview(hotspotStatusLabel)
-        networkSection.addArrangedSubview(statusRow)
-        statusRow.widthAnchor.constraint(equalTo: networkSection.widthAnchor).isActive = true
+        addRow(label: L10n.shared.hotspotStatusTitle, control: hotspotStatusLabel, to: networkSection.stack)
 
         let hotspotActions = NSStackView()
         hotspotActions.orientation = .horizontal
@@ -159,63 +241,63 @@ final class SettingsWindowController: NSWindowController {
         AppTheme.stylePrimaryButton(presetBtn)
         hotspotActions.addArrangedSubview(hotspotFixButton)
         hotspotActions.addArrangedSubview(presetBtn)
-        networkSection.addArrangedSubview(hotspotActions)
-        hotspotActions.widthAnchor.constraint(equalTo: networkSection.widthAnchor).isActive = true
+        addIndentedRow(content: hotspotActions, to: networkSection.stack)
 
         portField = themedTextField(value: SettingsStore.shared.localPort, placeholder: L10n.shared.portPlaceholder, width: 120)
-        addRow(label: L10n.shared.portTitle, control: portField, to: networkSection, tooltip: L10n.shared.tipLocalPort)
+        addRow(label: L10n.shared.portTitle, control: portField, to: networkSection.stack, tooltip: L10n.shared.tipLocalPort)
         addSection(networkSection)
         updateHotspotStatus()
 
         let dpiSection = createSection(
             title: L10n.shared.sectionDPI,
-            subtitle: L10n.shared.isRussian ? "Комбинируй strategy flags и численные параметры, не лезя в терминал." : "Blend strategy flags and tuning values without touching the terminal."
+            subtitle: L10n.shared.isRussian
+                ? "Основные флаги и параметры обхода DPI."
+                : "Primary DPI bypass flags and tuning."
         )
         let selected = SettingsStore.shared.selectedFlags
         for option in options {
             let cb = NSButton(checkboxWithTitle: option.flag, target: nil, action: nil)
             cb.state = selected.contains(option.flag) ? .on : .off
-            cb.font = .systemFont(ofSize: 13, weight: .medium)
+            cb.font = .systemFont(ofSize: 13, weight: .regular)
             checkboxes.append(cb)
 
-            let row = NSStackView()
-            row.orientation = .horizontal
-            row.spacing = 12
-            row.alignment = .firstBaseline
-
-            let spacer = NSView()
-            spacer.translatesAutoresizingMaskIntoConstraints = false
-            spacer.widthAnchor.constraint(equalToConstant: 140).isActive = true
-            row.addArrangedSubview(spacer)
-            row.addArrangedSubview(cb)
+            let optionStack = NSStackView()
+            optionStack.orientation = .vertical
+            optionStack.spacing = 3
+            optionStack.alignment = .leading
+            optionStack.addArrangedSubview(cb)
 
             let desc = NSTextField(wrappingLabelWithString: option.description)
             desc.font = .systemFont(ofSize: 12, weight: .regular)
             desc.textColor = AppTheme.textSecondary
-            row.addArrangedSubview(desc)
-            dpiSection.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: dpiSection.widthAnchor).isActive = true
+            let descContainer = NSView()
+            descContainer.translatesAutoresizingMaskIntoConstraints = false
+            descContainer.addSubview(desc)
+            desc.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                desc.topAnchor.constraint(equalTo: descContainer.topAnchor),
+                desc.leadingAnchor.constraint(equalTo: descContainer.leadingAnchor, constant: 18),
+                desc.trailingAnchor.constraint(equalTo: descContainer.trailingAnchor),
+                desc.bottomAnchor.constraint(equalTo: descContainer.bottomAnchor)
+            ])
+            optionStack.addArrangedSubview(descContainer)
+            addToggleRow(content: optionStack, to: dpiSection.stack)
         }
 
         ttlField = themedTextField(value: SettingsStore.shared.defaultTTL, placeholder: L10n.shared.ttlPlaceholder, width: 90)
-        addRow(label: L10n.shared.ttlTitle, control: ttlField, to: dpiSection, tooltip: L10n.shared.tipTTL)
+        addRow(label: L10n.shared.ttlTitle, control: ttlField, to: dpiSection.stack, tooltip: L10n.shared.tipTTL)
 
         splitModeButton = themedPopup(items: ["sni", "random", "chunk", "none"], selected: SettingsStore.shared.splitMode)
-        addRow(label: L10n.shared.splitModeTitle, control: splitModeButton, to: dpiSection, tooltip: L10n.shared.tipSplitMode)
+        addRow(label: L10n.shared.splitModeTitle, control: splitModeButton, to: dpiSection.stack, tooltip: L10n.shared.tipSplitMode)
 
         let disorderStack = NSStackView()
         disorderStack.orientation = .horizontal
         disorderStack.spacing = 12
         disorderStack.alignment = .centerY
 
-        let disorderSpacer = NSView()
-        disorderSpacer.translatesAutoresizingMaskIntoConstraints = false
-        disorderSpacer.widthAnchor.constraint(equalToConstant: 140).isActive = true
-        disorderStack.addArrangedSubview(disorderSpacer)
-
         httpsDisorderButton = NSButton(checkboxWithTitle: L10n.shared.httpsDisorder, target: nil, action: nil)
         httpsDisorderButton.state = SettingsStore.shared.httpsDisorder ? .on : .off
-        httpsDisorderButton.font = .systemFont(ofSize: 13, weight: .medium)
+        httpsDisorderButton.font = .systemFont(ofSize: 13, weight: .regular)
         disorderStack.addArrangedSubview(httpsDisorderButton)
 
         let fakeLabel = NSTextField(labelWithString: L10n.shared.httpsFakeCount)
@@ -229,80 +311,71 @@ final class SettingsWindowController: NSWindowController {
         fakeStack.alignment = .centerY
         fakeStack.addArrangedSubview(fakeLabel)
         fakeStack.addArrangedSubview(httpsFakeCountField)
-        disorderStack.addArrangedSubview(NSView())
         disorderStack.addArrangedSubview(fakeStack)
-        dpiSection.addArrangedSubview(disorderStack)
-        disorderStack.widthAnchor.constraint(equalTo: dpiSection.widthAnchor).isActive = true
+        addToggleRow(content: disorderStack, to: dpiSection.stack)
 
         httpsChunkSizeField = themedTextField(value: SettingsStore.shared.httpsChunkSize, placeholder: L10n.shared.httpsChunkPlaceholder, width: 90)
-        addRow(label: L10n.shared.httpsChunkSize, control: httpsChunkSizeField, to: dpiSection, tooltip: L10n.shared.tipChunkSize)
+        addRow(label: L10n.shared.httpsChunkSize, control: httpsChunkSizeField, to: dpiSection.stack, tooltip: L10n.shared.tipChunkSize)
         addSection(dpiSection)
 
         let dnsSection = createSection(
             title: L10n.shared.sectionDNS,
-            subtitle: L10n.shared.isRussian ? "Поднимай собственный DNS path, включая HTTPS mode." : "Swap DNS transport and resolver endpoint without leaving the app."
+            subtitle: L10n.shared.isRussian
+                ? "Настройки DNS и DoH."
+                : "DNS resolver and DoH settings."
         )
         dnsAddrField = themedTextField(value: SettingsStore.shared.dnsAddr, placeholder: "8.8.8.8:53")
-        addRow(label: L10n.shared.dnsAddrTitle, control: dnsAddrField, to: dnsSection, tooltip: L10n.shared.tipDNSAddr)
+        addRow(label: L10n.shared.dnsAddrTitle, control: dnsAddrField, to: dnsSection.stack, tooltip: L10n.shared.tipDNSAddr)
 
         dnsModeButton = themedPopup(items: ["udp", "https", "system"], selected: SettingsStore.shared.dnsMode)
-        addRow(label: L10n.shared.dnsModeTitle, control: dnsModeButton, to: dnsSection, tooltip: L10n.shared.tipDNSSystem)
+        addRow(label: L10n.shared.dnsModeTitle, control: dnsModeButton, to: dnsSection.stack, tooltip: L10n.shared.tipDNSSystem)
 
         dnsHttpsUrlField = themedTextField(value: SettingsStore.shared.dnsHttpsUrl, placeholder: "https://dns.google/dns-query")
-        addRow(label: "DoH URL", control: dnsHttpsUrlField, to: dnsSection)
+        addRow(label: "DoH URL", control: dnsHttpsUrlField, to: dnsSection.stack)
         addSection(dnsSection)
 
         let appSection = createSection(
             title: L10n.shared.sectionApp,
-            subtitle: L10n.shared.isRussian ? "Поведением клиента, апдейтами и reconnect управляем здесь." : "Client behavior, updates, and reconnect live here."
+            subtitle: L10n.shared.isRussian
+                ? "Поведение приложения и автодействия."
+                : "App behavior and automation."
         )
         let loginCb = NSButton(checkboxWithTitle: L10n.shared.launchAtLogin, target: self, action: #selector(toggleLoginItem))
         loginCb.state = SettingsStore.shared.launchAtLogin ? .on : .off
-        addCheckboxRow(button: loginCb, to: appSection)
+        addCheckboxRow(button: loginCb, to: appSection.stack)
 
         let updateCb = NSButton(checkboxWithTitle: L10n.shared.autoUpdateToggle, target: self, action: #selector(toggleUpdateItem))
         updateCb.state = SettingsStore.shared.autoUpdate ? .on : .off
-        addCheckboxRow(button: updateCb, to: appSection)
+        addCheckboxRow(button: updateCb, to: appSection.stack)
+
+        let autoDownloadCb = NSButton(checkboxWithTitle: L10n.shared.autoDownloadToggle, target: self, action: #selector(toggleDownloadItem))
+        autoDownloadCb.state = SettingsStore.shared.autoDownload ? .on : .off
+        addCheckboxRow(button: autoDownloadCb, to: appSection.stack)
 
         let ipv6Cb = NSButton(checkboxWithTitle: L10n.shared.disableIpv6, target: self, action: #selector(toggleIpv6))
         ipv6Cb.state = SettingsStore.shared.disableIpv6 ? .on : .off
-        addCheckboxRow(button: ipv6Cb, to: appSection)
+        addCheckboxRow(button: ipv6Cb, to: appSection.stack)
 
         let reconnectCb = NSButton(checkboxWithTitle: L10n.shared.autoReconnect, target: self, action: #selector(toggleReconnect))
         reconnectCb.state = SettingsStore.shared.autoReconnect ? .on : .off
         reconnectCb.toolTip = L10n.shared.tipAutoReconnect
-        addCheckboxRow(button: reconnectCb, to: appSection)
+        addCheckboxRow(button: reconnectCb, to: appSection.stack)
         addSection(appSection)
 
         let manualSection = createSection(
             title: L10n.shared.sectionManual,
-            subtitle: L10n.shared.isRussian ? "Для редких edge-case флагов, которые ещё не покрыты UI." : "For edge-case flags that still deserve a manual override."
+            subtitle: L10n.shared.isRussian
+                ? "Ручные аргументы для редких случаев."
+                : "Manual arguments for edge cases."
         )
         manualArgsField = themedTextField(value: manualArgsValue(), placeholder: L10n.shared.manualArgsPlaceholder)
-        manualSection.addArrangedSubview(manualArgsField)
-        manualArgsField.widthAnchor.constraint(equalTo: manualSection.widthAnchor).isActive = true
+        manualSection.stack.addArrangedSubview(manualArgsField)
+        manualArgsField.widthAnchor.constraint(equalTo: manualSection.stack.widthAnchor).isActive = true
         addSection(manualSection)
     }
 
-    private func createSection(title: String, subtitle: String) -> NSStackView {
-        let section = NSStackView()
-        section.orientation = .vertical
-        section.spacing = 12
-        section.alignment = .leading
-        section.translatesAutoresizingMaskIntoConstraints = false
-        section.addArrangedSubview(sectionHeader(title: title, subtitle: subtitle))
-        return section
-    }
-
-    private func sectionHeader(title: String, subtitle: String) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.spacing = 0
-        stack.alignment = .leading
-
-        let titleLabel = AppTheme.makeSectionTitle(title)
-        stack.addArrangedSubview(titleLabel)
-        return stack
+    private func createSection(title: String, subtitle: String? = nil) -> SettingsSectionView {
+        SettingsSectionView(title: title, subtitle: subtitle)
     }
 
     private func themedTextField(value: String, placeholder: String, width: CGFloat? = nil) -> NSTextField {
@@ -337,12 +410,13 @@ final class SettingsWindowController: NSWindowController {
         labelView.textColor = AppTheme.textSecondary
         labelView.alignment = .right
         labelView.translatesAutoresizingMaskIntoConstraints = false
-        labelView.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        labelView.widthAnchor.constraint(equalToConstant: formLabelWidth).isActive = true
 
         if let tooltip {
             control.toolTip = tooltip
         }
 
+        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
         control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         row.addArrangedSubview(labelView)
         row.addArrangedSubview(control)
@@ -350,21 +424,36 @@ final class SettingsWindowController: NSWindowController {
         row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
 
-    private func addCheckboxRow(button: NSButton, to stack: NSStackView) {
-        button.font = .systemFont(ofSize: 13, weight: .regular)
+    private func addIndentedRow(content: NSView, to stack: NSStackView) {
+        addInsetRow(content: content, to: stack, leadingInset: formLabelWidth)
+    }
 
+    private func addToggleRow(content: NSView, to stack: NSStackView) {
+        addInsetRow(content: content, to: stack, leadingInset: 18)
+    }
+
+    private func addInsetRow(content: NSView, to stack: NSStackView, leadingInset: CGFloat) {
         let row = NSStackView()
         row.orientation = .horizontal
         row.spacing = 12
-        row.alignment = .centerY
+        row.alignment = .top
 
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
-        spacer.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        spacer.widthAnchor.constraint(equalToConstant: leadingInset).isActive = true
+
+        content.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        content.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
         row.addArrangedSubview(spacer)
-        row.addArrangedSubview(button)
+        row.addArrangedSubview(content)
         stack.addArrangedSubview(row)
         row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    }
+
+    private func addCheckboxRow(button: NSButton, to stack: NSStackView) {
+        button.font = .systemFont(ofSize: 13, weight: .regular)
+        addToggleRow(content: button, to: stack)
     }
 
     private func manualArgsValue() -> String {
@@ -928,7 +1017,7 @@ final class HelpWindowController: NSWindowController {
 
 final class LoadingWindowController: NSWindowController {
     private var sublabel: NSTextField?
-    private var indicator: NSProgressIndicator?
+    private var progressView: LoaderProgressView?
     private var cancelButton: NSButton?
     var cancelHandler: (() -> Void)?
 
@@ -955,13 +1044,30 @@ final class LoadingWindowController: NSWindowController {
 
         let contentStack = NSStackView()
         contentStack.orientation = .vertical
-        contentStack.spacing = 10
+        contentStack.spacing = 12
         contentStack.alignment = .centerX
         background.addSubview(contentStack)
         contentStack.fill(parent: background, padding: 24)
 
+        let iconContainer = NSView()
+        iconContainer.translatesAutoresizingMaskIntoConstraints = false
+        iconContainer.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        iconContainer.heightAnchor.constraint(equalToConstant: 72).isActive = true
+        if let icon = NSApp.applicationIconImage {
+            let imageView = NSImageView(image: icon)
+            imageView.imageScaling = .scaleProportionallyUpOrDown
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            iconContainer.addSubview(imageView)
+            NSLayoutConstraint.activate([
+                imageView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+                imageView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+                imageView.widthAnchor.constraint(equalToConstant: 56),
+                imageView.heightAnchor.constraint(equalToConstant: 56)
+            ])
+        }
+
         let title = NSTextField(labelWithString: "DPI Killer")
-        title.font = .systemFont(ofSize: 20, weight: .semibold)
+        title.font = .systemFont(ofSize: 21, weight: .bold)
         title.textColor = AppTheme.textPrimary
         title.alignment = .center
 
@@ -971,11 +1077,9 @@ final class LoadingWindowController: NSWindowController {
         subtitle.alignment = .center
         sublabel = subtitle
 
-        indicator = NSProgressIndicator()
-        indicator?.style = .spinning
-        indicator?.isIndeterminate = true
-        indicator?.startAnimation(nil)
-        indicator?.translatesAutoresizingMaskIntoConstraints = false
+        progressView = LoaderProgressView()
+        progressView?.translatesAutoresizingMaskIntoConstraints = false
+        progressView?.setIndeterminate(true)
 
         cancelButton = NSButton(title: L10n.shared.cancel, target: self, action: #selector(cancelClicked))
         if let cancelButton {
@@ -983,10 +1087,15 @@ final class LoadingWindowController: NSWindowController {
             cancelButton.isHidden = true
         }
 
+        contentStack.addArrangedSubview(iconContainer)
         contentStack.addArrangedSubview(title)
         contentStack.addArrangedSubview(subtitle)
-        if let indicator {
-            contentStack.addArrangedSubview(indicator)
+        if let progressView {
+            contentStack.addArrangedSubview(progressView)
+            NSLayoutConstraint.activate([
+                progressView.widthAnchor.constraint(equalToConstant: 220),
+                progressView.heightAnchor.constraint(equalToConstant: 10)
+            ])
         }
         if let cancelButton {
             contentStack.addArrangedSubview(cancelButton)
@@ -1003,17 +1112,14 @@ final class LoadingWindowController: NSWindowController {
 
     func updateProgress(_ value: Double) {
         DispatchQueue.main.async {
-            self.indicator?.isIndeterminate = false
-            self.indicator?.doubleValue = value * 100
+            self.progressView?.setIndeterminate(false)
+            self.progressView?.setProgress(value)
         }
     }
 
     func setProgressIndeterminate(_ value: Bool) {
         DispatchQueue.main.async {
-            self.indicator?.isIndeterminate = value
-            if value {
-                self.indicator?.startAnimation(nil)
-            }
+            self.progressView?.setIndeterminate(value)
         }
     }
 
@@ -1039,9 +1145,8 @@ final class LoadingWindowController: NSWindowController {
     }
 }
 
-final class LoaderBackgroundView: NSVisualEffectView {
+final class LoaderBackgroundView: NSView {
     private let gradientLayer = CAGradientLayer()
-    private let borderLayer = CAShapeLayer()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1054,37 +1159,88 @@ final class LoaderBackgroundView: NSVisualEffectView {
     }
 
     private func commonInit() {
-        material = .hudWindow
-        blendingMode = .withinWindow
-        state = .active
         wantsLayer = true
         layer?.cornerRadius = 18
         layer?.masksToBounds = true
+        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
         gradientLayer.colors = [
-            NSColor.windowBackgroundColor.blended(withFraction: 0.16, of: NSColor.controlAccentColor)?.cgColor ?? NSColor.windowBackgroundColor.cgColor,
-            NSColor.windowBackgroundColor.blended(withFraction: 0.05, of: NSColor.systemBlue)?.cgColor ?? NSColor.windowBackgroundColor.cgColor
+            NSColor.windowBackgroundColor.blended(withFraction: 0.32, of: NSColor.systemOrange)?.cgColor ?? NSColor.windowBackgroundColor.cgColor,
+            NSColor.windowBackgroundColor.blended(withFraction: 0.18, of: NSColor.systemYellow)?.cgColor ?? NSColor.windowBackgroundColor.cgColor,
+            NSColor.windowBackgroundColor.blended(withFraction: 0.06, of: NSColor.systemBrown)?.cgColor ?? NSColor.windowBackgroundColor.cgColor
         ]
         gradientLayer.startPoint = CGPoint(x: 0, y: 1)
         gradientLayer.endPoint = CGPoint(x: 1, y: 0)
 
-        borderLayer.fillColor = NSColor.clear.cgColor
-        borderLayer.strokeColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
-        borderLayer.lineWidth = 1
-
         layer?.addSublayer(gradientLayer)
-        layer?.addSublayer(borderLayer)
     }
 
     override func layout() {
         super.layout()
         gradientLayer.frame = bounds
-        borderLayer.frame = bounds
-        borderLayer.path = CGPath(
-            roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
-            cornerWidth: 18,
-            cornerHeight: 18,
-            transform: nil
-        )
+    }
+}
+
+final class LoaderProgressView: NSView {
+    private let trackLayer = CALayer()
+    private let fillLayer = CAGradientLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        wantsLayer = true
+        layer?.addSublayer(trackLayer)
+        layer?.addSublayer(fillLayer)
+
+        trackLayer.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        fillLayer.colors = [
+            NSColor.white.withAlphaComponent(0.95).cgColor,
+            NSColor.systemYellow.withAlphaComponent(0.95).cgColor
+        ]
+        fillLayer.startPoint = CGPoint(x: 0, y: 0.5)
+        fillLayer.endPoint = CGPoint(x: 1, y: 0.5)
+    }
+
+    override func layout() {
+        super.layout()
+        let radius = bounds.height / 2
+        layer?.cornerRadius = radius
+        trackLayer.frame = bounds
+        trackLayer.cornerRadius = radius
+        fillLayer.cornerRadius = radius
+        if fillLayer.animation(forKey: "loaderSlide") == nil {
+            fillLayer.frame = bounds.insetBy(dx: bounds.width * 0.34, dy: 0)
+        }
+    }
+
+    func setProgress(_ value: Double) {
+        fillLayer.removeAnimation(forKey: "loaderSlide")
+        let clamped = max(0, min(1, value))
+        let width = max(bounds.width * CGFloat(clamped), bounds.height)
+        fillLayer.frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
+    }
+
+    func setIndeterminate(_ isIndeterminate: Bool) {
+        if isIndeterminate {
+            let segmentWidth = max(bounds.width * 0.34, bounds.height * 2.4)
+            fillLayer.frame = NSRect(x: -segmentWidth, y: 0, width: segmentWidth, height: bounds.height)
+            let animation = CABasicAnimation(keyPath: "position.x")
+            animation.fromValue = -segmentWidth / 2
+            animation.toValue = bounds.width + segmentWidth / 2
+            animation.duration = 0.9
+            animation.repeatCount = .infinity
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            fillLayer.add(animation, forKey: "loaderSlide")
+        } else {
+            fillLayer.removeAnimation(forKey: "loaderSlide")
+        }
     }
 }
