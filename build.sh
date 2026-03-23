@@ -16,7 +16,10 @@ while IFS= read -r file; do
     swift_sources+=("$file")
 done < <(find Sources -name '*.swift' | sort)
 
-swiftc -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" "${swift_sources[@]}" -framework Cocoa -framework Foundation -framework WebKit -framework Network
+MODULE_CACHE_DIR="${TMPDIR:-/tmp}/dpikiller-module-cache"
+mkdir -p "${MODULE_CACHE_DIR}"
+
+swiftc -module-cache-path "${MODULE_CACHE_DIR}" -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" "${swift_sources[@]}" -framework Cocoa -framework Foundation -framework WebKit -framework Network
 
 # Update version in Info.plist (v2.x)
 VERSION_FILE=".version"

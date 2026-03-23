@@ -33,76 +33,43 @@ final class SettingsWindowController: NSWindowController {
 
     convenience init() {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let width = max(640, min(920, screen.width * 0.48))
-        let height = max(700, min(1080, screen.height * 0.82))
+        let width = max(560, min(680, screen.width * 0.40))
+        let height = max(620, min(780, screen.height * 0.78))
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.titled, .closable, .fullSizeContentView, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow],
             backing: .buffered,
             defer: false
         )
         window.center()
         window.title = L10n.shared.settingsTitle
-        AppTheme.styleWindow(window, minSize: NSSize(width: 620, height: 680))
+        AppTheme.styleWindow(window, minSize: NSSize(width: 560, height: 620))
         self.init(window: window)
         setupUI()
     }
 
     func setupUI() {
-        let backdrop = GradientBackdropView()
-        window?.contentView = backdrop
+        let background = AppTheme.makeWindowBackground()
+        window?.contentView = background
 
-        let headerCard = SurfaceCardView(spacing: 10)
-        let heroRow = NSStackView()
-        heroRow.orientation = .horizontal
-        heroRow.spacing = 18
-        heroRow.alignment = .centerY
-
-        let iconContainer = NSView(frame: NSRect(x: 0, y: 0, width: 68, height: 68))
-        iconContainer.translatesAutoresizingMaskIntoConstraints = false
-        iconContainer.widthAnchor.constraint(equalToConstant: 68).isActive = true
-        iconContainer.heightAnchor.constraint(equalToConstant: 68).isActive = true
-        iconContainer.wantsLayer = true
-        iconContainer.layer?.cornerRadius = 20
-        iconContainer.layer?.backgroundColor = AppTheme.accent.withAlphaComponent(0.22).cgColor
-        iconContainer.layer?.borderWidth = 1
-        iconContainer.layer?.borderColor = AppTheme.accentSoft.withAlphaComponent(0.35).cgColor
-        if let icon = NSApp.applicationIconImage {
-            let iconView = NSImageView(image: icon)
-            iconView.imageScaling = .scaleProportionallyUpOrDown
-            iconContainer.addSubview(iconView)
-            iconView.fill(parent: iconContainer, padding: 12)
-        }
-
-        let heroText = NSStackView()
-        heroText.orientation = .vertical
-        heroText.spacing = 8
-        heroText.alignment = .leading
-        heroText.addArrangedSubview(AppTheme.makeHeadline(L10n.shared.settingsTitle))
-        heroText.addArrangedSubview(AppTheme.makeSubtitle(
-            L10n.shared.isRussian
-                ? "Модульная конфигурация обхода, DNS, прокси и автозапуска в одном окне."
-                : "Modular control surface for bypass, DNS, proxy, and startup behavior."
-        ))
-        heroText.addArrangedSubview(AppTheme.makeStatusBadge(
-            text: DPIKillerManager.shared.isRunning ? "LIVE SESSION" : "READY TO APPLY",
-            color: DPIKillerManager.shared.isRunning ? AppTheme.success : AppTheme.warning
-        ))
-
-        heroRow.addArrangedSubview(iconContainer)
-        heroRow.addArrangedSubview(heroText)
-        headerCard.stack.addArrangedSubview(heroRow)
+        let rootStack = NSStackView()
+        rootStack.orientation = .vertical
+        rootStack.spacing = 14
+        rootStack.alignment = .leading
+        background.addSubview(rootStack)
+        rootStack.fill(parent: background, padding: 20)
 
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420).isActive = true
 
-        let footerCard = SurfaceCardView(spacing: 0)
         let footerStack = NSStackView()
         footerStack.orientation = .horizontal
-        footerStack.spacing = 14
+        footerStack.spacing = 10
         footerStack.alignment = .centerY
 
         let cancelBtn = NSButton(title: L10n.shared.cancel, target: self, action: #selector(cancelAction))
@@ -112,37 +79,29 @@ final class SettingsWindowController: NSWindowController {
         saveButton.keyEquivalent = "\r"
         AppTheme.stylePrimaryButton(saveButton)
 
+        footerStack.addArrangedSubview(NSView())
         footerStack.addArrangedSubview(cancelBtn)
         footerStack.addArrangedSubview(saveButton)
-        footerCard.stack.addArrangedSubview(footerStack)
 
         let contentView = NSView()
+        contentView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = contentView
 
         let mainStack = NSStackView()
         mainStack.orientation = .vertical
-        mainStack.spacing = 20
-        mainStack.alignment = .centerX
+        mainStack.spacing = 22
+        mainStack.alignment = .leading
         contentView.addSubview(mainStack)
         mainStack.translatesAutoresizingMaskIntoConstraints = false
-
-        backdrop.addSubview(headerCard)
-        backdrop.addSubview(scrollView)
-        backdrop.addSubview(footerCard)
+        rootStack.addArrangedSubview(scrollView)
+        let footerSeparator = AppTheme.makeSeparator()
+        rootStack.addArrangedSubview(footerSeparator)
+        rootStack.addArrangedSubview(footerStack)
 
         NSLayoutConstraint.activate([
-            headerCard.topAnchor.constraint(equalTo: backdrop.topAnchor, constant: 24),
-            headerCard.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 24),
-            headerCard.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -24),
-
-            footerCard.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 24),
-            footerCard.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -24),
-            footerCard.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor, constant: -24),
-
-            scrollView.topAnchor.constraint(equalTo: headerCard.bottomAnchor, constant: 16),
-            scrollView.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 8),
-            scrollView.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -8),
-            scrollView.bottomAnchor.constraint(equalTo: footerCard.topAnchor, constant: -16),
+            scrollView.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
+            footerSeparator.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
+            footerStack.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
 
             contentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
             contentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
@@ -156,9 +115,9 @@ final class SettingsWindowController: NSWindowController {
             mainStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24)
         ])
 
-        func addSection(_ section: SurfaceCardView) {
+        func addSection(_ section: NSView) {
             mainStack.addArrangedSubview(section)
-            section.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -32).isActive = true
+            section.widthAnchor.constraint(equalTo: mainStack.widthAnchor).isActive = true
         }
 
         let coreSection = createSection(
@@ -166,7 +125,7 @@ final class SettingsWindowController: NSWindowController {
             subtitle: L10n.shared.isRussian ? "Где брать `spoofdpi` и как запускать его с нужными аргументами." : "Where `spoofdpi` is loaded from and how it is launched."
         )
         pathField = themedTextField(value: SettingsStore.shared.binaryPath, placeholder: L10n.shared.binaryPlaceholder)
-        addRow(label: L10n.shared.binaryPath, control: pathField, to: coreSection.stack, tooltip: L10n.shared.tipBinaryPath)
+        addRow(label: L10n.shared.binaryPath, control: pathField, to: coreSection, tooltip: L10n.shared.tipBinaryPath)
         addSection(coreSection)
 
         let networkSection = createSection(
@@ -180,12 +139,13 @@ final class SettingsWindowController: NSWindowController {
         statusRow.alignment = .centerY
         let statusTitle = NSTextField(labelWithString: L10n.shared.hotspotStatusTitle)
         statusTitle.font = .systemFont(ofSize: 12, weight: .medium)
-        statusTitle.textColor = .secondaryLabelColor
+        statusTitle.textColor = AppTheme.textSecondary
         hotspotStatusLabel = NSTextField(labelWithString: L10n.shared.diagChecking)
         hotspotStatusLabel.font = .systemFont(ofSize: 12, weight: .semibold)
         statusRow.addArrangedSubview(statusTitle)
         statusRow.addArrangedSubview(hotspotStatusLabel)
-        networkSection.stack.addArrangedSubview(statusRow)
+        networkSection.addArrangedSubview(statusRow)
+        statusRow.widthAnchor.constraint(equalTo: networkSection.widthAnchor).isActive = true
 
         let hotspotActions = NSStackView()
         hotspotActions.orientation = .horizontal
@@ -199,10 +159,11 @@ final class SettingsWindowController: NSWindowController {
         AppTheme.stylePrimaryButton(presetBtn)
         hotspotActions.addArrangedSubview(hotspotFixButton)
         hotspotActions.addArrangedSubview(presetBtn)
-        networkSection.stack.addArrangedSubview(hotspotActions)
+        networkSection.addArrangedSubview(hotspotActions)
+        hotspotActions.widthAnchor.constraint(equalTo: networkSection.widthAnchor).isActive = true
 
         portField = themedTextField(value: SettingsStore.shared.localPort, placeholder: L10n.shared.portPlaceholder, width: 120)
-        addRow(label: L10n.shared.portTitle, control: portField, to: networkSection.stack, tooltip: L10n.shared.tipLocalPort)
+        addRow(label: L10n.shared.portTitle, control: portField, to: networkSection, tooltip: L10n.shared.tipLocalPort)
         addSection(networkSection)
         updateHotspotStatus()
 
@@ -230,16 +191,17 @@ final class SettingsWindowController: NSWindowController {
 
             let desc = NSTextField(wrappingLabelWithString: option.description)
             desc.font = .systemFont(ofSize: 12, weight: .regular)
-            desc.textColor = .secondaryLabelColor
+            desc.textColor = AppTheme.textSecondary
             row.addArrangedSubview(desc)
-            dpiSection.stack.addArrangedSubview(row)
+            dpiSection.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: dpiSection.widthAnchor).isActive = true
         }
 
         ttlField = themedTextField(value: SettingsStore.shared.defaultTTL, placeholder: L10n.shared.ttlPlaceholder, width: 90)
-        addRow(label: L10n.shared.ttlTitle, control: ttlField, to: dpiSection.stack, tooltip: L10n.shared.tipTTL)
+        addRow(label: L10n.shared.ttlTitle, control: ttlField, to: dpiSection, tooltip: L10n.shared.tipTTL)
 
         splitModeButton = themedPopup(items: ["sni", "random", "chunk", "none"], selected: SettingsStore.shared.splitMode)
-        addRow(label: L10n.shared.splitModeTitle, control: splitModeButton, to: dpiSection.stack, tooltip: L10n.shared.tipSplitMode)
+        addRow(label: L10n.shared.splitModeTitle, control: splitModeButton, to: dpiSection, tooltip: L10n.shared.tipSplitMode)
 
         let disorderStack = NSStackView()
         disorderStack.orientation = .horizontal
@@ -258,7 +220,7 @@ final class SettingsWindowController: NSWindowController {
 
         let fakeLabel = NSTextField(labelWithString: L10n.shared.httpsFakeCount)
         fakeLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        fakeLabel.textColor = .secondaryLabelColor
+        fakeLabel.textColor = AppTheme.textSecondary
         httpsFakeCountField = themedTextField(value: SettingsStore.shared.httpsFakeCount, placeholder: "0", width: 68)
 
         let fakeStack = NSStackView()
@@ -269,10 +231,11 @@ final class SettingsWindowController: NSWindowController {
         fakeStack.addArrangedSubview(httpsFakeCountField)
         disorderStack.addArrangedSubview(NSView())
         disorderStack.addArrangedSubview(fakeStack)
-        dpiSection.stack.addArrangedSubview(disorderStack)
+        dpiSection.addArrangedSubview(disorderStack)
+        disorderStack.widthAnchor.constraint(equalTo: dpiSection.widthAnchor).isActive = true
 
         httpsChunkSizeField = themedTextField(value: SettingsStore.shared.httpsChunkSize, placeholder: L10n.shared.httpsChunkPlaceholder, width: 90)
-        addRow(label: L10n.shared.httpsChunkSize, control: httpsChunkSizeField, to: dpiSection.stack, tooltip: L10n.shared.tipChunkSize)
+        addRow(label: L10n.shared.httpsChunkSize, control: httpsChunkSizeField, to: dpiSection, tooltip: L10n.shared.tipChunkSize)
         addSection(dpiSection)
 
         let dnsSection = createSection(
@@ -280,13 +243,13 @@ final class SettingsWindowController: NSWindowController {
             subtitle: L10n.shared.isRussian ? "Поднимай собственный DNS path, включая HTTPS mode." : "Swap DNS transport and resolver endpoint without leaving the app."
         )
         dnsAddrField = themedTextField(value: SettingsStore.shared.dnsAddr, placeholder: "8.8.8.8:53")
-        addRow(label: L10n.shared.dnsAddrTitle, control: dnsAddrField, to: dnsSection.stack, tooltip: L10n.shared.tipDNSAddr)
+        addRow(label: L10n.shared.dnsAddrTitle, control: dnsAddrField, to: dnsSection, tooltip: L10n.shared.tipDNSAddr)
 
         dnsModeButton = themedPopup(items: ["udp", "https", "system"], selected: SettingsStore.shared.dnsMode)
-        addRow(label: L10n.shared.dnsModeTitle, control: dnsModeButton, to: dnsSection.stack, tooltip: L10n.shared.tipDNSSystem)
+        addRow(label: L10n.shared.dnsModeTitle, control: dnsModeButton, to: dnsSection, tooltip: L10n.shared.tipDNSSystem)
 
         dnsHttpsUrlField = themedTextField(value: SettingsStore.shared.dnsHttpsUrl, placeholder: "https://dns.google/dns-query")
-        addRow(label: "DoH URL", control: dnsHttpsUrlField, to: dnsSection.stack)
+        addRow(label: "DoH URL", control: dnsHttpsUrlField, to: dnsSection)
         addSection(dnsSection)
 
         let appSection = createSection(
@@ -295,20 +258,20 @@ final class SettingsWindowController: NSWindowController {
         )
         let loginCb = NSButton(checkboxWithTitle: L10n.shared.launchAtLogin, target: self, action: #selector(toggleLoginItem))
         loginCb.state = SettingsStore.shared.launchAtLogin ? .on : .off
-        addCheckboxRow(button: loginCb, to: appSection.stack)
+        addCheckboxRow(button: loginCb, to: appSection)
 
         let updateCb = NSButton(checkboxWithTitle: L10n.shared.autoUpdateToggle, target: self, action: #selector(toggleUpdateItem))
         updateCb.state = SettingsStore.shared.autoUpdate ? .on : .off
-        addCheckboxRow(button: updateCb, to: appSection.stack)
+        addCheckboxRow(button: updateCb, to: appSection)
 
         let ipv6Cb = NSButton(checkboxWithTitle: L10n.shared.disableIpv6, target: self, action: #selector(toggleIpv6))
         ipv6Cb.state = SettingsStore.shared.disableIpv6 ? .on : .off
-        addCheckboxRow(button: ipv6Cb, to: appSection.stack)
+        addCheckboxRow(button: ipv6Cb, to: appSection)
 
         let reconnectCb = NSButton(checkboxWithTitle: L10n.shared.autoReconnect, target: self, action: #selector(toggleReconnect))
         reconnectCb.state = SettingsStore.shared.autoReconnect ? .on : .off
         reconnectCb.toolTip = L10n.shared.tipAutoReconnect
-        addCheckboxRow(button: reconnectCb, to: appSection.stack)
+        addCheckboxRow(button: reconnectCb, to: appSection)
         addSection(appSection)
 
         let manualSection = createSection(
@@ -316,28 +279,29 @@ final class SettingsWindowController: NSWindowController {
             subtitle: L10n.shared.isRussian ? "Для редких edge-case флагов, которые ещё не покрыты UI." : "For edge-case flags that still deserve a manual override."
         )
         manualArgsField = themedTextField(value: manualArgsValue(), placeholder: L10n.shared.manualArgsPlaceholder)
-        manualSection.stack.addArrangedSubview(manualArgsField)
-        manualArgsField.widthAnchor.constraint(equalTo: manualSection.stack.widthAnchor).isActive = true
+        manualSection.addArrangedSubview(manualArgsField)
+        manualArgsField.widthAnchor.constraint(equalTo: manualSection.widthAnchor).isActive = true
         addSection(manualSection)
     }
 
-    private func createSection(title: String, subtitle: String) -> SurfaceCardView {
-        let section = SurfaceCardView(spacing: 14)
-        section.stack.addArrangedSubview(sectionHeader(title: title, subtitle: subtitle))
+    private func createSection(title: String, subtitle: String) -> NSStackView {
+        let section = NSStackView()
+        section.orientation = .vertical
+        section.spacing = 12
+        section.alignment = .leading
+        section.translatesAutoresizingMaskIntoConstraints = false
+        section.addArrangedSubview(sectionHeader(title: title, subtitle: subtitle))
         return section
     }
 
     private func sectionHeader(title: String, subtitle: String) -> NSView {
         let stack = NSStackView()
         stack.orientation = .vertical
-        stack.spacing = 6
+        stack.spacing = 0
         stack.alignment = .leading
 
-        let titleLabel = NSTextField(labelWithString: title.uppercased())
-        titleLabel.font = .systemFont(ofSize: 12, weight: .bold)
-        titleLabel.textColor = .secondaryLabelColor
+        let titleLabel = AppTheme.makeSectionTitle(title)
         stack.addArrangedSubview(titleLabel)
-        stack.addArrangedSubview(AppTheme.makeSubtitle(subtitle))
         return stack
     }
 
@@ -357,12 +321,7 @@ final class SettingsWindowController: NSWindowController {
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
         popup.addItems(withTitles: items)
         popup.selectItem(withTitle: selected)
-        popup.font = .systemFont(ofSize: 13, weight: .medium)
-        popup.wantsLayer = true
-        popup.layer?.cornerRadius = 10
-        popup.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.10).cgColor
-        popup.layer?.borderWidth = 1
-        popup.layer?.borderColor = AppTheme.cardStroke.cgColor
+        AppTheme.styleInput(popup)
         popup.translatesAutoresizingMaskIntoConstraints = false
         return popup
     }
@@ -370,12 +329,12 @@ final class SettingsWindowController: NSWindowController {
     private func addRow(label: String, control: NSView, to stack: NSStackView, tooltip: String? = nil) {
         let row = NSStackView()
         row.orientation = .horizontal
-        row.alignment = .firstBaseline
+        row.alignment = .centerY
         row.spacing = 12
 
         let labelView = NSTextField(labelWithString: label)
         labelView.font = .systemFont(ofSize: 12, weight: .medium)
-        labelView.textColor = .secondaryLabelColor
+        labelView.textColor = AppTheme.textSecondary
         labelView.alignment = .right
         labelView.translatesAutoresizingMaskIntoConstraints = false
         labelView.widthAnchor.constraint(equalToConstant: 140).isActive = true
@@ -384,13 +343,15 @@ final class SettingsWindowController: NSWindowController {
             control.toolTip = tooltip
         }
 
+        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         row.addArrangedSubview(labelView)
         row.addArrangedSubview(control)
         stack.addArrangedSubview(row)
+        row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
 
     private func addCheckboxRow(button: NSButton, to stack: NSStackView) {
-        button.font = .systemFont(ofSize: 13, weight: .medium)
+        button.font = .systemFont(ofSize: 13, weight: .regular)
 
         let row = NSStackView()
         row.orientation = .horizontal
@@ -403,6 +364,7 @@ final class SettingsWindowController: NSWindowController {
         row.addArrangedSubview(spacer)
         row.addArrangedSubview(button)
         stack.addArrangedSubview(row)
+        row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
 
     private func manualArgsValue() -> String {
@@ -578,31 +540,36 @@ final class SpeedTestWindowController: NSWindowController, NSWindowDelegate {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 470),
-            styleMask: [.titled, .closable, .fullSizeContentView, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 400),
+            styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         window.center()
         window.title = L10n.shared.speedTest
-        AppTheme.styleWindow(window, minSize: NSSize(width: 720, height: 430))
+        AppTheme.styleWindow(window, minSize: NSSize(width: 620, height: 360))
         self.init(window: window)
         window.delegate = self
         setupUI()
     }
 
     private func setupUI() {
-        let backdrop = GradientBackdropView()
-        window?.contentView = backdrop
+        let background = AppTheme.makeWindowBackground()
+        window?.contentView = background
 
-        let hero = SurfaceCardView(spacing: 10)
-        hero.stack.addArrangedSubview(AppTheme.makeHeadline(L10n.shared.speedTestTitle))
-        stageLabel = AppTheme.makeSubtitle(
+        let contentStack = NSStackView()
+        contentStack.orientation = .vertical
+        contentStack.spacing = 16
+        contentStack.alignment = .leading
+        background.addSubview(contentStack)
+        contentStack.fill(parent: background, padding: 20)
+
+        stageLabel = AppTheme.makeSecondaryText(
             L10n.shared.isRussian
                 ? "Cloudflare probe через текущую сетевую цепочку приложения."
                 : "Cloudflare probe routed through the app's current network chain."
         )
-        hero.stack.addArrangedSubview(stageLabel)
+        contentStack.addArrangedSubview(stageLabel)
 
         pingCard = metricContainer(title: L10n.shared.ping, unit: L10n.shared.ms)
         downloadCard = metricContainer(title: L10n.shared.download, unit: L10n.shared.mbps)
@@ -623,28 +590,23 @@ final class SpeedTestWindowController: NSWindowController, NSWindowDelegate {
         startButton = NSButton(title: L10n.shared.startTest, target: self, action: #selector(startClicked))
         AppTheme.stylePrimaryButton(startButton)
 
-        backdrop.addSubview(hero)
-        backdrop.addSubview(metrics)
-        backdrop.addSubview(progressIndicator)
-        backdrop.addSubview(startButton)
+        let actions = NSStackView()
+        actions.orientation = .horizontal
+        actions.spacing = 0
+        actions.alignment = .centerY
+        actions.addArrangedSubview(NSView())
+        actions.addArrangedSubview(startButton)
+
+        contentStack.addArrangedSubview(metrics)
+        contentStack.addArrangedSubview(progressIndicator)
+        contentStack.addArrangedSubview(actions)
 
         NSLayoutConstraint.activate([
-            hero.topAnchor.constraint(equalTo: backdrop.topAnchor, constant: 26),
-            hero.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 26),
-            hero.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -26),
-
-            metrics.topAnchor.constraint(equalTo: hero.bottomAnchor, constant: 20),
-            metrics.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 26),
-            metrics.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -26),
-
-            progressIndicator.topAnchor.constraint(equalTo: metrics.bottomAnchor, constant: 24),
-            progressIndicator.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 26),
-            progressIndicator.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -26),
-
-            startButton.topAnchor.constraint(equalTo: progressIndicator.bottomAnchor, constant: 22),
-            startButton.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
+            metrics.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            progressIndicator.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            actions.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
             startButton.widthAnchor.constraint(equalToConstant: 220),
-            startButton.heightAnchor.constraint(equalToConstant: 42)
+            startButton.heightAnchor.constraint(equalToConstant: 32)
         ])
     }
 
@@ -719,14 +681,14 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 460),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         window.center()
         window.title = L10n.shared.logsTitle
-        AppTheme.styleWindow(window, minSize: NSSize(width: 640, height: 420))
+        AppTheme.styleWindow(window, minSize: NSSize(width: 620, height: 380))
         self.init(window: window)
         window.delegate = self
         setupUI()
@@ -739,23 +701,25 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func setupUI() {
-        let backdrop = GradientBackdropView()
-        window?.contentView = backdrop
+        let background = AppTheme.makeWindowBackground()
+        window?.contentView = background
 
-        let title = AppTheme.makeHeadline(L10n.shared.logsTitle)
-        let subtitle = AppTheme.makeSubtitle(
+        let contentStack = NSStackView()
+        contentStack.orientation = .vertical
+        contentStack.spacing = 14
+        contentStack.alignment = .leading
+        background.addSubview(contentStack)
+        contentStack.fill(parent: background, padding: 20)
+
+        let subtitle = AppTheme.makeSecondaryText(
             L10n.shared.isRussian
                 ? "Живой circular buffer без спама в память."
                 : "Live circular buffer without runaway memory growth."
         )
         liveBadge = AppTheme.makeStatusBadge(text: "STREAMING", color: AppTheme.accentSoft)
+        contentStack.addArrangedSubview(subtitle)
+        contentStack.addArrangedSubview(liveBadge)
 
-        let hero = SurfaceCardView(spacing: 10)
-        hero.stack.addArrangedSubview(title)
-        hero.stack.addArrangedSubview(subtitle)
-        hero.stack.addArrangedSubview(liveBadge)
-
-        let logCard = SurfaceCardView(spacing: 0)
         scrollView = NSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
@@ -765,11 +729,11 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
         textView.isEditable = false
         textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.drawsBackground = false
-        textView.textColor = .labelColor
+        textView.textColor = AppTheme.textPrimary
         textView.textContainerInset = NSSize(width: 8, height: 10)
         scrollView.documentView = textView
-        logCard.addSubview(scrollView)
-        scrollView.fill(parent: logCard, padding: 18)
+        contentStack.addArrangedSubview(scrollView)
+        scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
 
         let actions = NSStackView()
         actions.orientation = .horizontal
@@ -780,25 +744,14 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
         AppTheme.styleSecondaryButton(clearBtn)
         let copyBtn = NSButton(title: L10n.shared.copyLogs, target: self, action: #selector(copyLogs))
         AppTheme.stylePrimaryButton(copyBtn)
+        actions.addArrangedSubview(NSView())
         actions.addArrangedSubview(clearBtn)
         actions.addArrangedSubview(copyBtn)
-
-        backdrop.addSubview(hero)
-        backdrop.addSubview(logCard)
-        backdrop.addSubview(actions)
+        contentStack.addArrangedSubview(actions)
 
         NSLayoutConstraint.activate([
-            hero.topAnchor.constraint(equalTo: backdrop.topAnchor, constant: 24),
-            hero.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 24),
-            hero.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -24),
-
-            logCard.topAnchor.constraint(equalTo: hero.bottomAnchor, constant: 16),
-            logCard.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 24),
-            logCard.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -24),
-            logCard.bottomAnchor.constraint(equalTo: actions.topAnchor, constant: -16),
-
-            actions.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 24),
-            actions.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor, constant: -24)
+            scrollView.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            actions.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
         ])
     }
 
@@ -848,51 +801,28 @@ final class HelpWindowController: NSWindowController {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 860, height: 680),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            contentRect: NSRect(x: 0, y: 0, width: 780, height: 620),
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.center()
         window.title = L10n.shared.helpTitle
-        AppTheme.styleWindow(window, minSize: NSSize(width: 680, height: 520))
+        AppTheme.styleWindow(window, minSize: NSSize(width: 660, height: 500))
         self.init(window: window)
         setupUI()
         loadReadme()
     }
 
     func setupUI() {
-        let backdrop = GradientBackdropView()
-        window?.contentView = backdrop
+        let background = AppTheme.makeWindowBackground()
+        window?.contentView = background
 
-        let hero = SurfaceCardView(spacing: 10)
-        hero.stack.addArrangedSubview(AppTheme.makeHeadline(L10n.shared.helpTitle))
-        hero.stack.addArrangedSubview(AppTheme.makeSubtitle(
-            L10n.shared.isRussian
-                ? "README рендерится локально внутри приложения."
-                : "README rendered locally inside the app."
-        ))
-
-        let webCard = SurfaceCardView(spacing: 0)
         webView = WKWebView()
         webView.setValue(false, forKey: "drawsBackground")
         webView.translatesAutoresizingMaskIntoConstraints = false
-        webCard.addSubview(webView)
-        webView.fill(parent: webCard, padding: 12)
-
-        backdrop.addSubview(hero)
-        backdrop.addSubview(webCard)
-
-        NSLayoutConstraint.activate([
-            hero.topAnchor.constraint(equalTo: backdrop.topAnchor, constant: 24),
-            hero.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 24),
-            hero.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -24),
-
-            webCard.topAnchor.constraint(equalTo: hero.bottomAnchor, constant: 16),
-            webCard.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor, constant: 24),
-            webCard.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor, constant: -24),
-            webCard.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor, constant: -24)
-        ])
+        background.addSubview(webView)
+        webView.fill(parent: background, padding: 16)
     }
 
     func loadReadme() {
@@ -910,16 +840,26 @@ final class HelpWindowController: NSWindowController {
         <html>
         <head>
         <style>
-        body { font-family: -apple-system; font-size: 15px; line-height: 1.65; padding: 28px 36px; color: #eaf2ff; background: linear-gradient(180deg, #101724 0%, #0a111c 100%); }
-        a { color: #71d6ff; }
-        h1, h2, h3 { color: #ffffff; }
-        h1 { font-size: 30px; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 12px; }
+        :root { color-scheme: light dark; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; line-height: 1.65; padding: 24px 28px; color: #1d1d1f; background: #ffffff; }
+        a { color: #0a84ff; }
+        h1, h2, h3 { color: #1d1d1f; }
+        h1 { font-size: 28px; border-bottom: 1px solid #d2d2d7; padding-bottom: 10px; }
         h2 { margin-top: 30px; }
-        pre { background: rgba(255,255,255,0.06); padding: 14px; border-radius: 14px; overflow-x: auto; border: 1px solid rgba(255,255,255,0.08); }
-        code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-        img { max-width: 100%; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); }
+        pre { background: #f5f5f7; padding: 14px; border-radius: 10px; overflow-x: auto; border: 1px solid #d2d2d7; }
+        code { background: #f5f5f7; padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        img { max-width: 100%; border-radius: 8px; border: 1px solid #d2d2d7; }
         li { margin: 6px 0; }
-        hr { border: none; height: 1px; background: rgba(255,255,255,0.10); }
+        hr { border: none; height: 1px; background: #d2d2d7; }
+        @media (prefers-color-scheme: dark) {
+        body { color: #f5f5f7; background: #1c1c1e; }
+        a { color: #4ea1ff; }
+        h1, h2, h3 { color: #ffffff; }
+        h1 { border-bottom-color: #3a3a3c; }
+        pre, code { background: #2c2c2e; border-color: #3a3a3c; }
+        img { border-color: #3a3a3c; }
+        hr { background: #3a3a3c; }
+        }
         </style>
         </head>
         <body>\(html)</body>
@@ -994,7 +934,7 @@ final class LoadingWindowController: NSWindowController {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 220),
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 196),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -1002,52 +942,37 @@ final class LoadingWindowController: NSWindowController {
         window.center()
         window.isMovableByWindowBackground = true
         window.level = .floating
+        window.backgroundColor = .clear
+        window.isOpaque = false
         window.hasShadow = true
         self.init(window: window)
         setupUI()
     }
 
     func setupUI() {
-        let backdrop = GradientBackdropView()
-        backdrop.wantsLayer = true
-        backdrop.layer?.cornerRadius = 28
-        backdrop.layer?.masksToBounds = true
-        window?.contentView = backdrop
+        let background = LoaderBackgroundView()
+        window?.contentView = background
 
-        let card = SurfaceCardView(spacing: 10)
-        backdrop.addSubview(card)
-        card.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor).isActive = true
-        card.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor).isActive = true
-        card.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        let contentStack = NSStackView()
+        contentStack.orientation = .vertical
+        contentStack.spacing = 10
+        contentStack.alignment = .centerX
+        background.addSubview(contentStack)
+        contentStack.fill(parent: background, padding: 24)
 
         let title = NSTextField(labelWithString: "DPI Killer")
-        title.font = .systemFont(ofSize: 24, weight: .bold)
-        title.textColor = .labelColor
+        title.font = .systemFont(ofSize: 20, weight: .semibold)
+        title.textColor = AppTheme.textPrimary
         title.alignment = .center
 
         let subtitle = NSTextField(labelWithString: L10n.shared.preparingBypass)
-        subtitle.font = .systemFont(ofSize: 13, weight: .medium)
-        subtitle.textColor = .secondaryLabelColor
+        subtitle.font = .systemFont(ofSize: 13, weight: .regular)
+        subtitle.textColor = AppTheme.textSecondary
         subtitle.alignment = .center
         sublabel = subtitle
 
-        let orb = NSView()
-        orb.translatesAutoresizingMaskIntoConstraints = false
-        orb.widthAnchor.constraint(equalToConstant: 64).isActive = true
-        orb.heightAnchor.constraint(equalToConstant: 64).isActive = true
-        orb.wantsLayer = true
-        orb.layer?.cornerRadius = 20
-        orb.layer?.backgroundColor = AppTheme.accent.withAlphaComponent(0.22).cgColor
-        orb.layer?.borderWidth = 1
-        orb.layer?.borderColor = AppTheme.accentSoft.withAlphaComponent(0.35).cgColor
-        if let icon = NSApp.applicationIconImage {
-            let iconView = NSImageView(image: icon)
-            orb.addSubview(iconView)
-            iconView.fill(parent: orb, padding: 10)
-        }
-
         indicator = NSProgressIndicator()
-        indicator?.style = .bar
+        indicator?.style = .spinning
         indicator?.isIndeterminate = true
         indicator?.startAnimation(nil)
         indicator?.translatesAutoresizingMaskIntoConstraints = false
@@ -1058,16 +983,13 @@ final class LoadingWindowController: NSWindowController {
             cancelButton.isHidden = true
         }
 
-        card.stack.alignment = .centerX
-        card.stack.addArrangedSubview(orb)
-        card.stack.addArrangedSubview(title)
-        card.stack.addArrangedSubview(subtitle)
+        contentStack.addArrangedSubview(title)
+        contentStack.addArrangedSubview(subtitle)
         if let indicator {
-            card.stack.addArrangedSubview(indicator)
-            indicator.widthAnchor.constraint(equalToConstant: 180).isActive = true
+            contentStack.addArrangedSubview(indicator)
         }
         if let cancelButton {
-            card.stack.addArrangedSubview(cancelButton)
+            contentStack.addArrangedSubview(cancelButton)
             cancelButton.widthAnchor.constraint(equalToConstant: 110).isActive = true
         }
     }
@@ -1114,5 +1036,55 @@ final class LoadingWindowController: NSWindowController {
             $0.duration = 0.18
             window?.animator().alphaValue = 0
         }, completionHandler: completion)
+    }
+}
+
+final class LoaderBackgroundView: NSVisualEffectView {
+    private let gradientLayer = CAGradientLayer()
+    private let borderLayer = CAShapeLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        material = .hudWindow
+        blendingMode = .withinWindow
+        state = .active
+        wantsLayer = true
+        layer?.cornerRadius = 18
+        layer?.masksToBounds = true
+
+        gradientLayer.colors = [
+            NSColor.windowBackgroundColor.blended(withFraction: 0.16, of: NSColor.controlAccentColor)?.cgColor ?? NSColor.windowBackgroundColor.cgColor,
+            NSColor.windowBackgroundColor.blended(withFraction: 0.05, of: NSColor.systemBlue)?.cgColor ?? NSColor.windowBackgroundColor.cgColor
+        ]
+        gradientLayer.startPoint = CGPoint(x: 0, y: 1)
+        gradientLayer.endPoint = CGPoint(x: 1, y: 0)
+
+        borderLayer.fillColor = NSColor.clear.cgColor
+        borderLayer.strokeColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
+        borderLayer.lineWidth = 1
+
+        layer?.addSublayer(gradientLayer)
+        layer?.addSublayer(borderLayer)
+    }
+
+    override func layout() {
+        super.layout()
+        gradientLayer.frame = bounds
+        borderLayer.frame = bounds
+        borderLayer.path = CGPath(
+            roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+            cornerWidth: 18,
+            cornerHeight: 18,
+            transform: nil
+        )
     }
 }
