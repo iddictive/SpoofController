@@ -11,7 +11,12 @@ mkdir -p "${APP_BUNDLE}/Contents/MacOS"
 mkdir -p "${APP_BUNDLE}/Contents/Resources"
 
 # Compile code directly into bundle
-swiftc -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" main.swift -framework Cocoa -framework Foundation
+swift_sources=("main.swift")
+while IFS= read -r file; do
+    swift_sources+=("$file")
+done < <(find Sources -name '*.swift' | sort)
+
+swiftc -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" "${swift_sources[@]}" -framework Cocoa -framework Foundation -framework WebKit -framework Network
 
 # Update version in Info.plist (v2.x)
 VERSION_FILE=".version"
