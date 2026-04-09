@@ -10,7 +10,10 @@ struct L10n {
     }
 
     var statusActive: String { isRussian ? "Статус: АКТИВЕН ✅" : "Status: ACTIVE ✅" }
+    var statusPartial: String { isRussian ? "Статус: ТРЕБУЕТ ОПТИМИЗАЦИИ ⚠️" : "Status: NEEDS OPTIMIZATION ⚠️" }
     var statusStopped: String { isRussian ? "Статус: ОСТАНОВЛЕН ❌" : "Status: STOPPED ❌" }
+    var networkOptimizationActive: String { isRussian ? "Оптимизация сети: применена ✅" : "Network Optimization: Applied ✅" }
+    var networkOptimizationInactive: String { isRussian ? "Оптимизация сети: не применена ⚠️" : "Network Optimization: Not Applied ⚠️" }
     var start: String { isRussian ? "Запустить" : "Start" }
     var stop: String { isRussian ? "Остановить" : "Stop" }
     var settings: String { isRussian ? "Настройки..." : "Settings..." }

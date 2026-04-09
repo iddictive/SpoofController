@@ -516,6 +516,7 @@ final class SettingsWindowController: NSWindowController {
             alert.runModal()
         } else {
             updateHotspotStatus()
+            (NSApp.delegate as? AppDelegate)?.refreshUI()
         }
     }
 

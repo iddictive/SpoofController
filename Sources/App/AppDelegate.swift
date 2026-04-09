@@ -1,6 +1,12 @@
 import Cocoa
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private enum RuntimeStatus: Hashable {
+        case stopped
+        case runningUnoptimized
+        case runningOptimized
+    }
+
     var statusItem: NSStatusItem?
     var settingsWindow: SettingsWindowController?
     var helpWindow: HelpWindowController?
@@ -8,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var speedTestWindow: SpeedTestWindowController?
     var logWindow: LogWindowController?
 
-    private var iconCache: [Bool: NSImage] = [:]
+    private var iconCache: [RuntimeStatus: NSImage] = [:]
     private var lastRefreshTime: Date = .distantPast
     private let refreshThrottleInterval: TimeInterval = 0.5
     private var refreshPending = false
@@ -82,11 +88,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if let button = self.statusItem?.button {
-                let running = DPIKillerManager.shared.isRunning
-                if self.iconCache[running] == nil {
-                    self.iconCache[running] = self.createStatusIcon(isRunning: running)
+                let runtimeStatus = self.currentRuntimeStatus()
+                if self.iconCache[runtimeStatus] == nil {
+                    self.iconCache[runtimeStatus] = self.createStatusIcon(status: runtimeStatus)
                 }
-                button.image = self.iconCache[running]
+                button.image = self.iconCache[runtimeStatus]
                 button.imagePosition = .imageOnly
             }
             self.setupMenu()
@@ -232,7 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func createStatusIcon(isRunning: Bool) -> NSImage {
+    private func createStatusIcon(status: RuntimeStatus) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size)
         image.lockFocus()
@@ -247,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dotRect = NSRect(x: 12.5, y: 1.0, width: 4.5, height: 4.5)
         NSColor.white.set()
         NSBezierPath(ovalIn: dotRect.insetBy(dx: -1, dy: -1)).fill()
-        (isRunning ? NSColor.systemGreen : NSColor.systemRed).set()
+        statusColor(for: status).set()
         NSBezierPath(ovalIn: dotRect).fill()
         image.unlockFocus()
         image.isTemplate = false
@@ -256,8 +262,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupMenu() {
         let menu = NSMenu()
-        let status = DPIKillerManager.shared.isRunning ? L10n.shared.statusActive : L10n.shared.statusStopped
+        let runtimeStatus = currentRuntimeStatus()
+        let status = statusTitle(for: runtimeStatus)
         menu.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
+        if runtimeStatus != .stopped {
+            menu.addItem(NSMenuItem(title: networkOptimizationTitle(for: runtimeStatus), action: nil, keyEquivalent: ""))
+        }
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: DPIKillerManager.shared.isRunning ? L10n.shared.stop : L10n.shared.start, action: #selector(toggle), keyEquivalent: "t"))
         menu.addItem(NSMenuItem(title: L10n.shared.diagTitle, action: #selector(runDiagnostics), keyEquivalent: "d"))
@@ -283,6 +293,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             source.resume()
             signalSources.append(source)
+        }
+    }
+
+    private func currentRuntimeStatus() -> RuntimeStatus {
+        guard DPIKillerManager.shared.isRunning else { return .stopped }
+        return isNetworkOptimizationApplied() ? .runningOptimized : .runningUnoptimized
+    }
+
+    private func statusTitle(for status: RuntimeStatus) -> String {
+        switch status {
+        case .stopped:
+            return L10n.shared.statusStopped
+        case .runningUnoptimized:
+            return L10n.shared.statusPartial
+        case .runningOptimized:
+            return L10n.shared.statusActive
+        }
+    }
+
+    private func networkOptimizationTitle(for status: RuntimeStatus) -> String {
+        switch status {
+        case .runningOptimized:
+            return L10n.shared.networkOptimizationActive
+        case .stopped, .runningUnoptimized:
+            return L10n.shared.networkOptimizationInactive
+        }
+    }
+
+    private func statusColor(for status: RuntimeStatus) -> NSColor {
+        switch status {
+        case .stopped:
+            return NSColor.systemRed
+        case .runningUnoptimized:
+            return NSColor.systemOrange
+        case .runningOptimized:
+            return NSColor.systemGreen
+        }
+    }
+
+    private func isNetworkOptimizationApplied() -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/sysctl")
+        task.arguments = ["-n", "net.inet.ip.ttl"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return Int(output ?? "") == 65
+        } catch {
+            return false
         }
     }
 }

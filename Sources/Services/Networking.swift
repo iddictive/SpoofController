@@ -6,30 +6,57 @@ final class NetworkMonitor {
     static let shared = NetworkMonitor()
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkMonitorQueue")
-    private var lastPathStatus: NWPath.Status = .satisfied
+    private var lastPathStatus: NWPath.Status?
+    private var pendingRestorationWorkItem: DispatchWorkItem?
+    private var hasStarted = false
+    private let restorationStabilizationDelay: TimeInterval = 2.0
+    var onConnectivityLost: (() -> Void)?
     var onConnectivityRestored: (() -> Void)?
 
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self = self else { return }
             let status = path.status
+            let previousStatus = self.lastPathStatus
+
+            guard status != previousStatus else { return }
+
             AppLogger.log("[NetworkMonitor] Connection status: \(status)")
-            if self.lastPathStatus != .satisfied && status == .satisfied {
+            if previousStatus != .satisfied && status == .satisfied {
                 AppLogger.log("[NetworkMonitor] Connectivity restored. Notifying...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                self.pendingRestorationWorkItem?.cancel()
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self = self, self.lastPathStatus == .satisfied else { return }
                     self.onConnectivityRestored?()
                 }
+                self.pendingRestorationWorkItem = workItem
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + self.restorationStabilizationDelay,
+                    execute: workItem
+                )
+            } else {
+                if previousStatus == .satisfied && status != .satisfied {
+                    AppLogger.log("[NetworkMonitor] Connectivity lost. Notifying...")
+                    self.onConnectivityLost?()
+                }
+                self.pendingRestorationWorkItem?.cancel()
+                self.pendingRestorationWorkItem = nil
             }
             self.lastPathStatus = status
         }
     }
 
     func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
         monitor.start(queue: queue)
     }
 
     func stop() {
+        pendingRestorationWorkItem?.cancel()
+        pendingRestorationWorkItem = nil
         monitor.cancel()
+        hasStarted = false
     }
 }
 

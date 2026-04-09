@@ -13,29 +13,41 @@ final class DPIKillerManager {
     private var outputPipe: Pipe?
     private var watchdogTimer: DispatchSourceTimer?
     private var highCpuStrikes = 0
-    private let maxStrikes = 3
-    private let cpuThreshold = 150.0
+    private let maxStrikes = 5
+    private let cpuThreshold = 400.0
     private let watchdogInterval: UInt64 = 30
     private var lastRestartTime: Date?
-    private let restartCooldown: TimeInterval = 60
+    private let restartCooldown: TimeInterval = 300
     private var wasRunningBeforeDisconnect = false
+    private var shouldRestoreAfterDisconnect = false
+    private var isConnectivityRestartInProgress = false
 
     init() {
+        NetworkMonitor.shared.onConnectivityLost = { [weak self] in
+            guard let self = self else { return }
+            let wasActive = self.isRunning || self.process?.isRunning == true || self.wasRunningBeforeDisconnect
+            guard wasActive else { return }
+            self.shouldRestoreAfterDisconnect = true
+            AppLogger.log("[Manager] Connectivity lost while spoofdpi was active. Marked for auto-restore.")
+        }
+
         NetworkMonitor.shared.onConnectivityRestored = { [weak self] in
             guard let self = self else { return }
-            guard SettingsStore.shared.autoReconnect, self.wasRunningBeforeDisconnect else { return }
-            guard !self.isRunning, self.process?.isRunning != true else {
-                AppLogger.log("[Manager] Connectivity restored, but spoofdpi is already running. Skipping auto-restart.")
+            guard SettingsStore.shared.autoReconnect, self.shouldRestoreAfterDisconnect else { return }
+            guard !self.isConnectivityRestartInProgress else {
+                AppLogger.log("[Manager] Connectivity restore is already in progress. Skipping duplicate restart.")
                 return
             }
+            self.isConnectivityRestartInProgress = true
             DispatchQueue.main.async {
                 AppLogger.log("[Manager] Auto-restarting after network restoration...")
-                self.start { success, error in
+                self.restartAfterConnectivityRestoration { success, error in
                     if success {
                         AppLogger.log("[Manager] Auto-restart success.")
                     } else {
                         AppLogger.log("[Manager] Auto-restart failed: \(error ?? "unknown")")
                     }
+                    self.isConnectivityRestartInProgress = false
                     (NSApp.delegate as? AppDelegate)?.refreshUI()
                 }
             }
@@ -50,6 +62,7 @@ final class DPIKillerManager {
         killOrphans()
         isRunning = false
         wasRunningBeforeDisconnect = true
+        shouldRestoreAfterDisconnect = false
 
         let binaryPath = SettingsStore.shared.binaryPath
         AppLogger.log("[Manager] Starting with binary: \(binaryPath)")
@@ -151,6 +164,8 @@ final class DPIKillerManager {
     func stop() {
         isRunning = false
         wasRunningBeforeDisconnect = false
+        shouldRestoreAfterDisconnect = false
+        isConnectivityRestartInProgress = false
         stopWatchdog()
         outputPipe?.fileHandleForReading.readabilityHandler = nil
         outputPipe = nil
@@ -272,6 +287,23 @@ final class DPIKillerManager {
                 }
                 (NSApp.delegate as? AppDelegate)?.refreshUI()
             }
+        }
+    }
+
+    private func restartAfterConnectivityRestoration(completion: @escaping (Bool, String?) -> Void) {
+        shouldRestoreAfterDisconnect = false
+        highCpuStrikes = 0
+        stopWatchdog()
+        outputPipe?.fileHandleForReading.readabilityHandler = nil
+        outputPipe = nil
+        process?.terminate()
+        process = nil
+        isRunning = false
+        killOrphans()
+        disableSystemProxy()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.start(completion: completion)
         }
     }
 
