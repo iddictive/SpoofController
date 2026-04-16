@@ -23,15 +23,19 @@ It is a **GoodbyeDPI Mac alternative** that restores access to YouTube and block
 ### Features
 - **Control**: Start/stop from Menu Bar.
 - **Status**: Visual indicator (🟢/🔴).
-- **Auto-Install**: Builds lightweight `ciadpi` automatically and falls back to `spoofdpi` when needed.
+- **Backend Selector**: Choose `Auto`, `ciadpi`, `spoofdpi`, or a custom binary path in Settings.
+- **Auto-Install**: Builds lightweight `ciadpi` automatically and installs official `spoofdpi` as fallback.
+- **Auto-Reconnect**: Restores the backend after connectivity drops when enabled.
+- **Proxy-Aware**: Uses `SOCKS5` for `ciadpi` and `HTTP` proxy mode for `spoofdpi`.
 - **Ultra-Lightweight**: Zero-log silent operation for 0.1% CPU and minimal RAM usage.
 - **Clean State**: Automatically kills orphan processes to prevent conflicts.
-- **Advanced Settings**: Configure TTL and Window Size values for specialized bypass scenarios.
+- **Advanced Settings**: Configure backend, TTL, proxy port, DNS behavior, and manual flags.
 
 ### Setup
 1. **Download**: Get `.dmg` from [Releases](https://github.com/iddictive/DPI-Killer/releases).
 2. **Install**: Drag to `Applications`.
 3. **Run**: Opens with auto-setup.
+4. **Update**: Use `Check for Updates...` from the menu bar app to install newer builds.
 
 ### VPN Compatibility
 To use DPI Killer alongside a VPN (like Shadowrocket, AdGuard, etc.):
@@ -59,15 +63,19 @@ curl -sL https://raw.githubusercontent.com/iddictive/DPI-Killer/main/scripts/uni
 ### Возможности
 - **Управление**: Старт/стоп из менюбара.
 - **Статус**: Цветной индикатор (🟢/🔴).
-- **Auto-установка**: Сам соберёт лёгкий `ciadpi`, а при необходимости переключится на `spoofdpi`.
+- **Выбор backend-а**: В настройках можно выбрать `Авто`, `ciadpi`, `spoofdpi` или свой путь к бинарю.
+- **Auto-установка**: Сам соберёт лёгкий `ciadpi` и установит официальный `spoofdpi` как fallback.
+- **Авто-реконнект**: Может восстановить backend после пропадания сети.
+- **Корректный proxy-режим**: Для `ciadpi` использует `SOCKS5`, для `spoofdpi` — `HTTP` proxy.
 - **Максимальная легкость**: Работает бесшумно без записи логов, потребляя ~0.1% CPU и минимум RAM.
 - **Чистый запуск**: Автоматически завершает старые backend-процессы для избежания конфликтов.
-- **Расширенные настройки**: Установка значений TTL и Window Size для специфических сценариев обхода.
+- **Расширенные настройки**: Backend, TTL, порт, DNS-поведение и ручные флаги.
 
 ### Установка
 1. **Скачать**: `.dmg` со страницы [Релизов](https://github.com/iddictive/DPI-Killer/releases).
 2. **Установить**: Перетянуть в `Applications`.
 3. **Запуск**: Готов к работе сразу.
+4. **Обновления**: Новую сборку можно поставить через пункт `Проверить обновления...` в меню приложения.
 
 ### Совместимость с VPN
 Чтобы использовать DPI Killer вместе с VPN (Shadowrocket, AdGuard и т.д.):

@@ -4,7 +4,7 @@
 VERSION=$1
 
 if [ -z "$VERSION" ]; then
-    echo "Usage: ./scripts/release.sh v1.0.0"
+    echo "Usage: ./scripts/release.sh v3.0.59"
     exit 1
 fi
 
@@ -26,7 +26,7 @@ git push origin "${VERSION}"
 # 4. Create GitHub Release (if gh cli is available)
 if command -v gh &> /dev/null; then
     echo "Creating GitHub Release..."
-    gh release create "${VERSION}" DPIKiller.dmg --title "Release ${VERSION}" --notes "Check README for changelog."
+    gh release create "${VERSION}" DPIKiller.dmg --title "DPI Killer ${VERSION}" --notes "See README for setup, backend selection, and update instructions."
 else
     echo "GitHub CLI (gh) not found. Please upload DPIKiller.dmg manually to the GitHub Release page."
 fi

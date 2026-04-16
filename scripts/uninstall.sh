@@ -8,6 +8,7 @@ echo "Uninstalling ${APP_NAME}..."
 
 # 1. Stop the process if running
 echo "Stopping background processes..."
+pkill -f "ciadpi"
 pkill -f "spoofdpi"
 pkill -f "${APP_NAME}"
 
@@ -27,5 +28,6 @@ osascript -e "tell application \"System Events\" to delete login item \"${APP_NA
 echo "Cleaning up user defaults and logs..."
 defaults delete com.antigravity.DPIKiller 2>/dev/null
 rm -rf ~/Library/Logs/${APP_NAME} 2>/dev/null
+rm -rf ~/Library/Application\ Support/DPI\ Killer 2>/dev/null
 
 echo "Uninstallation complete. 🧹"

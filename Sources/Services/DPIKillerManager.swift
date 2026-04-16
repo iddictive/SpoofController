@@ -33,7 +33,7 @@ final class DPIKillerManager {
             let wasActive = self.isRunning || self.process?.isRunning == true || self.wasRunningBeforeDisconnect
             guard wasActive else { return }
             self.shouldRestoreAfterDisconnect = true
-            AppLogger.log("[Manager] Connectivity lost while spoofdpi was active. Marked for auto-restore.")
+            AppLogger.log("[Manager] Connectivity lost while backend was active. Marked for auto-restore.")
         }
 
         NetworkMonitor.shared.onConnectivityRestored = { [weak self] in
@@ -277,7 +277,7 @@ final class DPIKillerManager {
             highCpuStrikes += 1
             AppLogger.log("[Watchdog] High CPU detected: \(cpu)% (strike \(highCpuStrikes)/\(maxStrikes))")
             if highCpuStrikes >= maxStrikes {
-                AppLogger.log("[Watchdog] CPU threshold exceeded for \(highCpuStrikes) consecutive checks. Auto-restarting spoofdpi...")
+                AppLogger.log("[Watchdog] CPU threshold exceeded for \(highCpuStrikes) consecutive checks. Auto-restarting backend...")
                 DispatchQueue.main.async { [weak self] in
                     self?.restartDueToHighCPU()
                 }
@@ -307,9 +307,9 @@ final class DPIKillerManager {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.start { success, error in
                 if success {
-                    AppLogger.log("[Watchdog] spoofdpi restarted successfully.")
+                    AppLogger.log("[Watchdog] Backend restarted successfully.")
                 } else {
-                    AppLogger.log("[Watchdog] Failed to restart spoofdpi: \(error ?? "unknown error")")
+                    AppLogger.log("[Watchdog] Failed to restart backend: \(error ?? "unknown error")")
                 }
                 (NSApp.delegate as? AppDelegate)?.refreshUI()
             }
