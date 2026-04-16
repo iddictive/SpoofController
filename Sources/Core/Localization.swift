@@ -23,11 +23,22 @@ struct L10n {
     var quit: String { isRussian ? "Выйти" : "Quit" }
 
     var settingsTitle: String { isRussian ? "Расширенные настройки" : "Advanced Settings" }
+    var backendModeTitle: String { isRussian ? "Движок:" : "Backend:" }
+    var backendAuto: String { isRussian ? "Авто" : "Auto" }
+    var backendCiadpi: String { isRussian ? "ciadpi" : "ciadpi" }
+    var backendSpoofdpi: String { isRussian ? "spoofdpi" : "spoofdpi" }
+    var backendCustom: String { isRussian ? "Custom" : "Custom" }
+    var backendSummaryTitle: String { isRussian ? "Активный режим:" : "Resolved Mode:" }
+    var backendPathHint: String { isRussian ? "Авто и фиксированные режимы сами подставляют путь. Ручное поле нужно только для custom." : "Auto and pinned modes resolve the path for you. Manual path is only needed for custom." }
+    var backendMissingSuffix: String { isRussian ? "не найден" : "not found" }
+    var binaryPathCustom: String { isRussian ? "Custom path:" : "Custom path:" }
     var binaryPath: String { isRussian ? "Путь к бинарнику:" : "Binary Path:" }
-    var binaryPlaceholder: String { isRussian ? "Например: /opt/homebrew/bin/spoofdpi" : "e.g. /opt/homebrew/bin/spoofdpi" }
+    var binaryPlaceholder: String { isRussian ? "Например: /usr/local/bin/ciadpi или /opt/homebrew/bin/spoofdpi" : "e.g. /usr/local/bin/ciadpi or /opt/homebrew/bin/spoofdpi" }
     var argumentsTitle: String { isRussian ? "Аргументы (флаги):" : "Arguments (Flags):" }
     var manualArgsTitle: String { isRussian ? "Доп. аргументы:" : "Manual Arguments:" }
     var manualArgsPlaceholder: String { isRussian ? "-p 8080 -window-size 10" : "-p 8080 -window-size 10" }
+    var manualArgsPlaceholderCiadpi: String { isRussian ? "--fake -1 --ttl 8" : "--fake -1 --ttl 8" }
+    var manualArgsPlaceholderSpoofdpi: String { isRussian ? "--enable-doh" : "--enable-doh" }
     var autoLaunchTitle: String { isRussian ? "Автозагрузка:" : "Auto Launch:" }
     var launchAtLogin: String { isRussian ? "Запускать при старте системы" : "Launch at system startup" }
     var saveAndRestart: String { isRussian ? "Сохранить и Перезапустить" : "Save & Restart" }
@@ -56,22 +67,25 @@ struct L10n {
     var dnsAddrTitle: String { isRussian ? "DNS Адрес:" : "DNS Address:" }
     var dnsModeTitle: String { isRussian ? "Режим DNS:" : "DNS Mode:" }
     var dnsHttpsTitle: String { isRussian ? "DoH URL:" : "DoH URL:" }
+    var dnsDisabledForCiadpi: String { isRussian ? "DNS override работает только с spoofdpi." : "DNS override is available only with spoofdpi." }
 
     var descSystemProxy: String { isRussian ? "Использовать системный прокси" : "Use system-wide proxy" }
     var descSilent: String { isRussian ? "Скрыть баннер при запуске" : "Suppress startup banner" }
     var descIpv4Only: String { isRussian ? "Только IPv4 для DNS" : "IPv4 only for DNS" }
     var descDebug: String { isRussian ? "Режим отладки (info/debug)" : "Debug mode (info/debug)" }
-    var descPolicyAuto: String { isRussian ? "Авто-детект заблокированных сайтов" : "Auto-detect blocked sites" }
+    var descPolicyAuto: String { isRussian ? "Адаптивный обход для ciadpi" : "Adaptive bypass for ciadpi" }
 
     var dependencyMissing: String { isRussian ? "Отсутствует зависимость" : "Dependency Missing" }
-    var spoofDpiNeeded: String { isRussian ? "SpoofDPI не установлен. Установить через Homebrew?" : "SpoofDPI is not installed. Install via Homebrew?" }
+    var spoofDpiNeeded: String { isRussian ? "Не найдены backend-движки. Установить поддерживаемые движки для macOS?" : "No DPI backends were found. Install the supported macOS backends?" }
     var install: String { isRussian ? "Установить" : "Install" }
-    var installing: String { isRussian ? "Установка..." : "Installing..." }
-    var pleaseWaitBrew: String { isRussian ? "Пожалуйста, подождите. Установка через brew может занять минуту." : "Please wait while we install spoofdpi via brew. This might take a minute." }
-    var installComplete: String { isRussian ? "Установка завершена" : "Installation Complete" }
-    var installSuccess: String { isRussian ? "SpoofDPI успешно установлен. Запуск сервиса..." : "SpoofDPI has been installed successfully. Starting service..." }
+    var installing: String { isRussian ? "Установка движков..." : "Installing backends..." }
+    var pleaseWaitBrew: String { isRussian ? "Пожалуйста, подождите. Сборка ciadpi или fallback-установка могут занять минуту." : "Please wait while ciadpi is built or the fallback backend is installed. This might take a minute." }
+    var installComplete: String { isRussian ? "Движки установлены" : "Backends Installed" }
+    var installSuccess: String { isRussian ? "Поддерживаемые движки установлены. Запуск сервиса..." : "Supported backends were installed. Starting service..." }
     var installFailed: String { isRussian ? "Ошибка установки" : "Installation Failed" }
-    var installManual: String { isRussian ? "Неизвестная ошибка. Установите вручную: 'brew install spoofdpi'" : "Unknown error. Please install manually: 'brew install spoofdpi'" }
+    var installManual: String { isRussian ? "Неизвестная ошибка. Установите ciadpi вручную и скачайте SpoofDPI из официального GitHub release." : "Unknown error. Please install ciadpi manually and download SpoofDPI from the official GitHub release." }
+    var backendStartTimeout: String { isRussian ? "Backend не поднял локальный прокси вовремя." : "The backend did not start the local proxy in time." }
+    var backendExitedEarly: String { isRussian ? "Backend завершился до готовности." : "The backend exited before becoming ready." }
     var failedToStart: String { isRussian ? "Не удалось запустить" : "Failed to start" }
     var preparingBypass: String { isRussian ? "Подготовка обхода... ⚡️" : "Preparing your bypass... ⚡️" }
     var cancel: String { isRussian ? "Отмена" : "Cancel" }
@@ -126,7 +140,7 @@ struct L10n {
     var sectionApp: String { isRussian ? "App" : "App" }
     var sectionManual: String { isRussian ? "Manual" : "Manual" }
 
-    var tipBinaryPath: String { isRussian ? "Полный путь к исполняемому файлу spoofdpi." : "Full path to the spoofdpi executable." }
+    var tipBinaryPath: String { isRussian ? "Полный путь к исполняемому файлу ciadpi или spoofdpi." : "Full path to the ciadpi or spoofdpi executable." }
     var tipLocalPort: String { isRussian ? "Порт, который будет слушать локальный прокси (1-65535)." : "Port for the local proxy (1-65535)." }
     var tipTTL: String { isRussian ? "Time To Live для пакетов. Помогает скрыть присутствие прокси (1-255)." : "Time To Live for packets. Helps hide proxy presence (1-255)." }
     var tipSplitMode: String { isRussian ? "Способ разделения HTTPS пакетов." : "Method for splitting HTTPS packets." }

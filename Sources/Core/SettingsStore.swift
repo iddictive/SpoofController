@@ -4,9 +4,38 @@ import Foundation
 final class SettingsStore {
     static let shared = SettingsStore()
     private let defaults = UserDefaults.standard
+    private let managedArgumentKeys: Set<String> = [
+        "--default-ttl",
+        "--def-ttl",
+        "--https-split-mode",
+        "--https-split-pos",
+        "--https-fake-count",
+        "--https-chunk-size",
+        "--https-disorder",
+        "--listen-addr",
+        "--dns-addr",
+        "--dns-mode",
+        "--dns-https-url",
+        "-p",
+        "--port",
+        "--auto",
+        "--split",
+        "--disorder",
+        "--fake",
+        "--ttl",
+        "--tlsrec"
+    ]
+    private let managedFlagsWithoutValues: Set<String> = [
+        "--https-disorder"
+    ]
 
     var binaryPath: String {
-        get { defaults.string(forKey: "binaryPath") ?? autoDetectBinaryPath() }
+        get {
+            if let stored = defaults.string(forKey: "binaryPath") {
+                return resolvedBinaryPath(fromStored: stored)
+            }
+            return detectBestBinaryPath()
+        }
         set { defaults.set(newValue, forKey: "binaryPath") }
     }
 
@@ -95,15 +124,30 @@ final class SettingsStore {
         let args = customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
         return Set(args.filter {
             $0.hasPrefix("-")
-                && !$0.hasPrefix("--default-ttl")
-                && !$0.hasPrefix("--https-chunk-size")
-                && !$0.hasPrefix("--https-fake-count")
-                && !$0.hasPrefix("--listen-addr")
-                && !$0.hasPrefix("--dns-addr")
-                && !$0.hasPrefix("--dns-mode")
-                && !$0.hasPrefix("--dns-https-url")
-                && !$0.hasPrefix("--https-split-mode")
+                && !managedArgumentKeys.contains($0)
         })
+    }
+
+    var resolvedEngine: BypassEngine {
+        BypassEngine(binaryPath: binaryPath)
+    }
+
+    var backendSelection: BackendSelection {
+        guard binaryPathWasUserSet else { return .automatic }
+        let stored = defaults.string(forKey: "binaryPath") ?? ""
+        guard !stored.isEmpty else { return .automatic }
+
+        if preferredCiadpiPaths().contains(stored) {
+            return .ciadpi
+        }
+        if preferredSpoofDpiPaths().contains(stored) {
+            return .spoofdpi
+        }
+        return .custom
+    }
+
+    var usesSystemProxy: Bool {
+        selectedFlags.contains("--system-proxy")
     }
 
     func applyIpv6Preference() {
@@ -125,67 +169,247 @@ final class SettingsStore {
         dnsMode: String,
         dnsHttpsUrl: String
     ) {
-        var uniqueFlags = flags.joined(separator: " ")
-
-        if let ttlInt = Int(ttl), ttlInt > 0 {
-            uniqueFlags += " --default-ttl \(ttlInt)"
-        }
-        if !splitMode.isEmpty && splitMode != "sni" {
-            uniqueFlags += " --https-split-mode \(splitMode)"
-        }
-        if let fakeCount = Int(SettingsStore.shared.httpsFakeCount), fakeCount > 0 {
-            uniqueFlags += " --https-fake-count \(fakeCount)"
-        }
-        if let chunkSize = Int(SettingsStore.shared.httpsChunkSize), chunkSize > 0 {
-            uniqueFlags += " --https-chunk-size \(chunkSize)"
-        }
-        if SettingsStore.shared.httpsDisorder {
-            uniqueFlags += " --https-disorder"
-        }
-
-        let portToUse = port.trimmingCharacters(in: .whitespaces)
-        if !portToUse.isEmpty && portToUse != "8080" {
-            uniqueFlags += " --listen-addr 127.0.0.1:\(portToUse)"
-        }
-        if !dnsAddr.isEmpty && dnsAddr != "8.8.8.8:53" {
-            uniqueFlags += " --dns-addr \(dnsAddr)"
-        }
-        if !dnsMode.isEmpty && dnsMode != "udp" {
-            uniqueFlags += " --dns-mode \(dnsMode)"
-        }
-        if dnsMode == "https"
-            && !dnsHttpsUrl.isEmpty
-            && dnsHttpsUrl != "https://dns.google/dns-query" {
-            uniqueFlags += " --dns-https-url \(dnsHttpsUrl)"
-        }
-
         let manualParts = manual.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
         var cleanedParts: [String] = []
         var index = 0
         while index < manualParts.count {
             let part = manualParts[index]
-            if [
-                "--default-ttl",
-                "--https-split-mode",
-                "--https-split-pos",
-                "--listen-addr",
-                "--dns-addr",
-                "--dns-mode",
-                "--dns-https-url"
-            ].contains(part) {
-                index += 2
-            } else if flags.contains(part) {
+            if managedFlagsWithoutValues.contains(part) || flags.contains(part) {
                 index += 1
-            } else if Int(part) != nil {
+            } else if managedArgumentKeys.contains(part) {
                 index += 1
+                if index < manualParts.count && !manualParts[index].hasPrefix("-") {
+                    index += 1
+                }
             } else {
                 cleanedParts.append(part)
                 index += 1
             }
         }
 
-        customArgs = "\(uniqueFlags) \(cleanedParts.joined(separator: " "))"
-            .trimmingCharacters(in: .whitespaces)
+        let persistedFlags = flags.sorted()
+        customArgs = (persistedFlags + cleanedParts).joined(separator: " ")
+    }
+
+    func currentEngine(for explicitPath: String? = nil) -> BypassEngine {
+        BypassEngine(binaryPath: explicitPath ?? binaryPath)
+    }
+
+    func resolvedBinaryPath(for selection: BackendSelection, customPath: String? = nil) -> String {
+        switch selection {
+        case .automatic:
+            return detectBestBinaryPath()
+        case .ciadpi:
+            return detectedPath(for: .ciadpi) ?? managedCiadpiPath
+        case .spoofdpi:
+            return detectedPath(for: .spoofdpi) ?? "/opt/homebrew/bin/spoofdpi"
+        case .custom:
+            let trimmed = customPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? binaryPath : trimmed
+        }
+    }
+
+    var binaryPathWasUserSet: Bool {
+        defaults.object(forKey: "binaryPathWasUserSet") as? Bool ?? false
+    }
+
+    func saveUserSelectedBinaryPath(_ path: String) {
+        defaults.set(path, forKey: "binaryPath")
+        defaults.set(true, forKey: "binaryPathWasUserSet")
+    }
+
+    func saveDetectedBinaryPath(_ path: String) {
+        defaults.set(path, forKey: "binaryPath")
+        defaults.set(false, forKey: "binaryPathWasUserSet")
+    }
+
+    func applyBackendSelection(_ selection: BackendSelection, customPath: String? = nil) {
+        switch selection {
+        case .automatic:
+            saveDetectedBinaryPath(resolvedBinaryPath(for: selection))
+        case .ciadpi, .spoofdpi, .custom:
+            saveUserSelectedBinaryPath(resolvedBinaryPath(for: selection, customPath: customPath))
+        }
+    }
+
+    func detectedPath(for engine: BypassEngine) -> String? {
+        let candidates: [String]
+        switch engine {
+        case .ciadpi:
+            candidates = preferredCiadpiPaths()
+        case .spoofdpi:
+            candidates = preferredSpoofDpiPaths()
+        }
+        return candidates.first(where: { FileManager.default.fileExists(atPath: $0) })
+    }
+
+    func detectBestBinaryPath() -> String {
+        let bundledCiadpi = preferredCiadpiPaths().first
+        let bundledSpoofDpi = preferredSpoofDpiPaths().first
+        let paths = [
+            bundledCiadpi,
+            bundledSpoofDpi,
+        ].compactMap { $0 }
+        for path in paths where FileManager.default.fileExists(atPath: path) {
+            return path
+        }
+        return "ciadpi"
+    }
+
+    var managedCiadpiPath: String {
+        let baseDir = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first
+            ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/Library/Application Support"
+        return "\(baseDir)/DPI Killer/bin/ciadpi"
+    }
+
+    var managedSpoofdpiPath: String {
+        let baseDir = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first
+            ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/Library/Application Support"
+        return "\(baseDir)/DPI Killer/bin/spoofdpi"
+    }
+
+    private func resolvedBinaryPath(fromStored stored: String) -> String {
+        guard !binaryPathWasUserSet else {
+            return stored
+        }
+        guard currentEngine(for: stored) == .spoofdpi else {
+            return stored
+        }
+        if let preferred = preferredCiadpiPaths().first(where: { FileManager.default.fileExists(atPath: $0) }) {
+            return preferred
+        }
+        return stored
+    }
+
+    private func preferredCiadpiPaths() -> [String] {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+        return [
+            Bundle.main.path(forResource: "ciadpi-binary", ofType: nil, inDirectory: "MacOS"),
+            managedCiadpiPath,
+            "/opt/homebrew/bin/ciadpi",
+            "/usr/local/bin/ciadpi",
+            "\(homeDir)/.local/bin/ciadpi"
+        ].compactMap { $0 }
+    }
+
+    private func preferredSpoofDpiPaths() -> [String] {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+        return [
+            Bundle.main.path(forResource: "spoofdpi-binary", ofType: nil, inDirectory: "MacOS"),
+            managedSpoofdpiPath,
+            "/opt/homebrew/bin/spoofdpi",
+            "/usr/local/bin/spoofdpi",
+            "/usr/bin/spoofdpi",
+            "\(homeDir)/.spoof-dpi/bin/spoofdpi",
+            "\(homeDir)/.spoof-dpi/bin/spoof-dpi"
+        ].compactMap { $0 }
+    }
+
+    func manualArgsString(for explicitPath: String? = nil) -> String {
+        let allArgs = customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        let engine = currentEngine(for: explicitPath)
+        var manualParts: [String] = []
+        var index = 0
+
+        while index < allArgs.count {
+            let arg = allArgs[index]
+            if optionsFlags.contains(arg) || managedArgumentKeys.contains(arg) {
+                index += 1
+                if managedFlagsWithoutValues.contains(arg) {
+                    continue
+                }
+                if index < allArgs.count && !allArgs[index].hasPrefix("-") {
+                    index += 1
+                }
+                continue
+            }
+
+            if engine == .ciadpi, ["--silent", "--dns-ipv4-only", "--debug"].contains(arg) {
+                index += 1
+                continue
+            }
+
+            manualParts.append(arg)
+            index += 1
+        }
+
+        return manualParts.joined(separator: " ")
+    }
+
+    func launchArguments(for explicitPath: String? = nil) -> [String] {
+        let engine = currentEngine(for: explicitPath)
+        let manualParts = manualArgsString(for: explicitPath)
+            .components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+        let flags = selectedFlags
+        let port = (Int(localPort.trimmingCharacters(in: .whitespaces)) ?? 8080).clamped(to: 1...65535)
+        let ttlValue = (Int(defaultTTL.trimmingCharacters(in: .whitespaces)) ?? 128).clamped(to: 1...255)
+        let fakeCount = (Int(httpsFakeCount.trimmingCharacters(in: .whitespaces)) ?? 0).clamped(to: 0...100)
+        let chunkSize = (Int(httpsChunkSize.trimmingCharacters(in: .whitespaces)) ?? 20).clamped(to: 1...1000)
+
+        switch engine {
+        case .spoofdpi:
+            var args: [String] = []
+            if flags.contains("--silent") { args.append("--silent") }
+            if flags.contains("--dns-ipv4-only") { args += ["--dns-qtype", "ipv4"] }
+            if flags.contains("--debug") { args += ["--log-level", "debug"] }
+            args += ["--default-fake-ttl", "\(ttlValue)"]
+            if !splitMode.isEmpty && splitMode != "sni" {
+                args += ["--https-split-mode", splitMode]
+            }
+            if httpsDisorder {
+                args.append("--https-disorder")
+            }
+            if fakeCount > 0 {
+                args += ["--https-fake-count", "\(fakeCount)"]
+            }
+            if chunkSize > 0 {
+                args += ["--https-chunk-size", "\(chunkSize)"]
+            }
+            args += ["--listen-addr", "127.0.0.1:\(port)"]
+            let normalizedDNSMode = dnsMode.trimmingCharacters(in: .whitespaces)
+            let spoofDNSMode: String = switch normalizedDNSMode {
+            case "", "udp": "udp"
+            case "https", "doh": "https"
+            case "system", "sys": "system"
+            default: "udp"
+            }
+            let trimmedDNS = dnsAddr.trimmingCharacters(in: .whitespaces)
+            if spoofDNSMode != "system", !trimmedDNS.isEmpty {
+                args += ["--dns-addr", trimmedDNS]
+            }
+            args += ["--dns-mode", spoofDNSMode]
+            let trimmedDoH = dnsHttpsUrl.trimmingCharacters(in: .whitespaces)
+            if spoofDNSMode == "https", !trimmedDoH.isEmpty {
+                args += ["--dns-https-url", trimmedDoH]
+            }
+            return args + manualParts
+        case .ciadpi:
+            var args: [String] = ["-p", "\(port)", "--def-ttl", "\(ttlValue)"]
+            if flags.contains("--policy-auto") {
+                args += ["--auto", "torst"]
+            }
+            switch splitMode {
+            case "sni":
+                args += ["--split", "1+s"]
+            case "chunk":
+                args += ["--tlsrec", "1+s"]
+            case "random":
+                if !args.contains("--auto") {
+                    args += ["--auto", "torst"]
+                }
+                args += ["--tlsrec", "1+s"]
+            default:
+                break
+            }
+            if httpsDisorder {
+                args += ["--disorder", "1"]
+            }
+            if fakeCount > 0 {
+                args += ["--fake", "-1", "--ttl", "8"]
+            }
+            return args + manualParts
+        }
     }
 
     private func applyIpv6Settings(_ disable: Bool) {
@@ -212,20 +436,7 @@ final class SettingsStore {
         try? process.run()
     }
 
-    private func autoDetectBinaryPath() -> String {
-        let bundlePath = Bundle.main.path(forResource: "spoofdpi-binary", ofType: nil, inDirectory: "MacOS")
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-        let paths = [
-            bundlePath,
-            "/opt/homebrew/bin/spoofdpi",
-            "/usr/local/bin/spoofdpi",
-            "/usr/bin/spoofdpi",
-            "\(homeDir)/.spoof-dpi/bin/spoofdpi",
-            "\(homeDir)/.spoof-dpi/bin/spoof-dpi"
-        ].compactMap { $0 }
-        for path in paths where FileManager.default.fileExists(atPath: path) {
-            return path
-        }
-        return "spoofdpi"
+    private var optionsFlags: Set<String> {
+        ["--system-proxy", "--silent", "--dns-ipv4-only", "--debug", "--policy-auto"]
     }
 }

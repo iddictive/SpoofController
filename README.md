@@ -12,9 +12,9 @@
 
 <a name="english"></a>
 ## English 🇺🇸
-### Professional macOS GUI for `spoofdpi` — Bypass DPI & Remove Throttling
+### Professional macOS GUI for `ciadpi` / `spoofdpi` — Bypass DPI & Remove Throttling
 
-**DPI Killer** is a lightweight, high-performance macOS application built to bypass DPI censorship, unblock websites, and remove ISP throttling.
+**DPI Killer** is a lightweight, high-performance macOS application for bypassing DPI censorship, unblocking websites, and reducing throttling. It now prefers the lighter `ciadpi` backend when available, while keeping `spoofdpi` as a fallback.
 
 > Love sharing internet from your phone but hate it when your ISP throttles the speed? Many solutions have been tried over the years. This one is simply convenient for Mac users. If you're on Windows... well, my condolences. 😉
 
@@ -23,7 +23,7 @@ It is a **GoodbyeDPI Mac alternative** that restores access to YouTube and block
 ### Features
 - **Control**: Start/stop from Menu Bar.
 - **Status**: Visual indicator (🟢/🔴).
-- **Auto-Install**: Handles `spoofdpi` dependency via Homebrew.
+- **Auto-Install**: Builds lightweight `ciadpi` automatically and falls back to `spoofdpi` when needed.
 - **Ultra-Lightweight**: Zero-log silent operation for 0.1% CPU and minimal RAM usage.
 - **Clean State**: Automatically kills orphan processes to prevent conflicts.
 - **Advanced Settings**: Configure TTL and Window Size values for specialized bypass scenarios.
@@ -48,9 +48,9 @@ curl -sL https://raw.githubusercontent.com/iddictive/DPI-Killer/main/scripts/uni
 
 <a name="russian"></a>
 ## Русский 🇷🇺
-### Нативный GUI для `spoofdpi` — Обход DPI и снятие ограничений скорости
+### Нативный GUI для `ciadpi` / `spoofdpi` — Обход DPI и снятие ограничений скорости
 
-**DPI Killer** — легкое и производительное приложение для macOS на базе `spoofdpi`, которое обходит блокировки провайдеров (DPI) и убирает замедление трафика. 
+**DPI Killer** — лёгкое и производительное приложение для macOS для обхода DPI и снятия ограничений скорости. По умолчанию оно использует более лёгкий `ciadpi`, а `spoofdpi` остаётся совместимым fallback.
 
 > Любите раздавать интернет с телефона, но провайдер режет скорость? Давно было много разных решений, но это — просто удобное для тех, у кого Mac. Для тех, у кого Windows — соболезную. 😉
 
@@ -59,9 +59,9 @@ curl -sL https://raw.githubusercontent.com/iddictive/DPI-Killer/main/scripts/uni
 ### Возможности
 - **Управление**: Старт/стоп из менюбара.
 - **Статус**: Цветной индикатор (🟢/🔴).
-- **Auto-установка**: Сам проверит и поставит `spoofdpi`.
+- **Auto-установка**: Сам соберёт лёгкий `ciadpi`, а при необходимости переключится на `spoofdpi`.
 - **Максимальная легкость**: Работает бесшумно без записи логов, потребляя ~0.1% CPU и минимум RAM.
-- **Чистый запуск**: Автоматически завершает старые процессы `spoofdpi` для избежания конфликтов.
+- **Чистый запуск**: Автоматически завершает старые backend-процессы для избежания конфликтов.
 - **Расширенные настройки**: Установка значений TTL и Window Size для специфических сценариев обхода.
 
 ### Установка

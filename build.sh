@@ -2,6 +2,7 @@
 set -e
 APP_NAME="DPIKiller"
 APP_BUNDLE="${APP_NAME}.app"
+VERSION_PREFIX="3.0"
 
 # Clean old build
 rm -rf "${APP_BUNDLE}"
@@ -21,7 +22,7 @@ mkdir -p "${MODULE_CACHE_DIR}"
 
 swiftc -module-cache-path "${MODULE_CACHE_DIR}" -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" "${swift_sources[@]}" -framework Cocoa -framework Foundation -framework WebKit -framework Network
 
-# Update version in Info.plist (v2.x)
+# Update version in Info.plist
 VERSION_FILE=".version"
 if [ ! -f "$VERSION_FILE" ]; then
     echo "0" > "$VERSION_FILE"
@@ -29,7 +30,7 @@ fi
 BUILD_NUM=$(cat "$VERSION_FILE")
 BUILD_NUM=$((BUILD_NUM + 1))
 echo "$BUILD_NUM" > "$VERSION_FILE"
-FULL_VERSION="2.0.${BUILD_NUM}"
+FULL_VERSION="${VERSION_PREFIX}.${BUILD_NUM}"
 
 # Use plutil to update Info.plist if available, else use sed
 if command -v plutil >/dev/null 2>&1; then
@@ -45,7 +46,12 @@ cp README.md "${APP_BUNDLE}/Contents/Resources/README.md"
 mkdir -p "${APP_BUNDLE}/Contents/Resources/assets"
 cp assets/banner.png "${APP_BUNDLE}/Contents/Resources/assets/banner.png"
 
-# Copy patched spoofdpi binary
+# Copy optional bundled backends
+if [ -f "ciadpi-binary" ]; then
+    cp ciadpi-binary "${APP_BUNDLE}/Contents/MacOS/ciadpi-binary"
+    chmod +x "${APP_BUNDLE}/Contents/MacOS/ciadpi-binary"
+fi
+
 if [ -f "spoofdpi-patched" ]; then
     cp spoofdpi-patched "${APP_BUNDLE}/Contents/MacOS/spoofdpi-binary"
     chmod +x "${APP_BUNDLE}/Contents/MacOS/spoofdpi-binary"

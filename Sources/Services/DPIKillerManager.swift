@@ -1,5 +1,6 @@
 import Cocoa
 import Foundation
+import Network
 
 final class DPIKillerManager {
     static let shared = DPIKillerManager()
@@ -21,6 +22,10 @@ final class DPIKillerManager {
     private var wasRunningBeforeDisconnect = false
     private var shouldRestoreAfterDisconnect = false
     private var isConnectivityRestartInProgress = false
+
+    private var currentEngine: BypassEngine {
+        SettingsStore.shared.currentEngine()
+    }
 
     init() {
         NetworkMonitor.shared.onConnectivityLost = { [weak self] in
@@ -65,6 +70,8 @@ final class DPIKillerManager {
         shouldRestoreAfterDisconnect = false
 
         let binaryPath = SettingsStore.shared.binaryPath
+        let engine = SettingsStore.shared.currentEngine(for: binaryPath)
+        let port = (Int(SettingsStore.shared.localPort.trimmingCharacters(in: .whitespaces)) ?? 8080).clamped(to: 1...65535)
         AppLogger.log("[Manager] Starting with binary: \(binaryPath)")
         guard FileManager.default.fileExists(atPath: binaryPath) else {
             completion(false, "NOT_INSTALLED")
@@ -76,9 +83,7 @@ final class DPIKillerManager {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binaryPath)
-        process.arguments = SettingsStore.shared.customArgs
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
+        process.arguments = SettingsStore.shared.launchArguments(for: binaryPath)
 
         let pipe = Pipe()
         outputPipe = pipe
@@ -114,9 +119,37 @@ final class DPIKillerManager {
         do {
             try process.run()
             self.process = process
-            self.isRunning = true
-            startWatchdog()
-            completion(true, nil)
+            waitForBackendReady(engine: engine, process: process, port: port) { [weak self] ready in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    guard self.process === process, process.isRunning else {
+                        self.isRunning = false
+                        completion(false, L10n.shared.backendExitedEarly)
+                        return
+                    }
+
+                    guard ready else {
+                        AppLogger.log("[Manager] Backend readiness timed out for \(engine.displayName) on port \(port).")
+                        process.terminate()
+                        self.outputPipe?.fileHandleForReading.readabilityHandler = nil
+                        self.outputPipe = nil
+                        self.process = nil
+                        self.isRunning = false
+                        self.disableSystemProxy()
+                        completion(false, L10n.shared.backendStartTimeout)
+                        (NSApp.delegate as? AppDelegate)?.refreshUI()
+                        return
+                    }
+
+                    self.isRunning = true
+                    if SettingsStore.shared.usesSystemProxy {
+                        self.enableSystemProxy(for: engine)
+                    }
+                    self.startWatchdog()
+                    completion(true, nil)
+                    (NSApp.delegate as? AppDelegate)?.refreshUI()
+                }
+            }
         } catch {
             self.isRunning = false
             completion(false, error.localizedDescription)
@@ -124,17 +157,9 @@ final class DPIKillerManager {
     }
 
     func install(completion: @escaping (Bool, String?) -> Void) {
-        let brewPaths = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
-        let brewPath = brewPaths.first { FileManager.default.fileExists(atPath: $0) }
-
         let process = Process()
-        if let brewPath {
-            process.executableURL = URL(fileURLWithPath: brewPath)
-            process.arguments = ["install", "spoofdpi"]
-        } else {
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-c", "curl -fsSL https://raw.githubusercontent.com/xvzc/spoofdpi/main/install.sh | bash"]
-        }
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-c", installScript()]
 
         installProcess = process
 
@@ -144,6 +169,7 @@ final class DPIKillerManager {
                 DispatchQueue.main.async {
                     self?.installProcess = nil
                     if proc.terminationStatus == 0 {
+                        SettingsStore.shared.saveDetectedBinaryPath(SettingsStore.shared.detectBestBinaryPath())
                         completion(true, nil)
                     } else {
                         completion(false, "Installation failed with exit code \(proc.terminationStatus)")
@@ -308,19 +334,175 @@ final class DPIKillerManager {
     }
 
     private func killOrphans() {
-        let killer = Process()
-        killer.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        killer.arguments = ["-9", "spoofdpi"]
-        try? killer.run()
-        killer.waitUntilExit()
+        for processName in Set(currentEngine.processNames + BypassEngine.ciadpi.processNames + BypassEngine.spoofdpi.processNames) {
+            let killer = Process()
+            killer.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            killer.arguments = ["-9", processName]
+            try? killer.run()
+            killer.waitUntilExit()
+        }
     }
 
-    func disableSystemProxy() {
-        let script = "services=$(networksetup -listallnetworkservices | grep -v '*'); while IFS= read -r service; do networksetup -setwebproxystate \"$service\" off 2>/dev/null; networksetup -setsecurewebproxystate \"$service\" off 2>/dev/null; done <<< \"$services\""
+    private func enableSystemProxy(for engine: BypassEngine) {
+        let port = (Int(SettingsStore.shared.localPort.trimmingCharacters(in: .whitespaces)) ?? 8080).clamped(to: 1...65535)
+        let script: String
+        switch engine.proxyMode {
+        case .http:
+            script = """
+            services=$(networksetup -listallnetworkservices | grep -v '^An asterisk' | grep -v '^\\*$');
+            while IFS= read -r service; do
+              [ -z "$service" ] && continue
+              networksetup -setwebproxy "$service" 127.0.0.1 \(port) off 2>/dev/null
+              networksetup -setsecurewebproxy "$service" 127.0.0.1 \(port) off 2>/dev/null
+              networksetup -setwebproxystate "$service" on 2>/dev/null
+              networksetup -setsecurewebproxystate "$service" on 2>/dev/null
+              networksetup -setsocksfirewallproxystate "$service" off 2>/dev/null
+            done <<< "$services"
+            """
+        case .socks:
+            script = """
+            services=$(networksetup -listallnetworkservices | grep -v '^An asterisk' | grep -v '^\\*$');
+            while IFS= read -r service; do
+              [ -z "$service" ] && continue
+              networksetup -setsocksfirewallproxy "$service" 127.0.0.1 \(port) off 2>/dev/null
+              networksetup -setsocksfirewallproxystate "$service" on 2>/dev/null
+              networksetup -setwebproxystate "$service" off 2>/dev/null
+              networksetup -setsecurewebproxystate "$service" off 2>/dev/null
+            done <<< "$services"
+            """
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-c", script]
         try? process.run()
         process.waitUntilExit()
+    }
+
+    func disableSystemProxy() {
+        let script = """
+        services=$(networksetup -listallnetworkservices | grep -v '^An asterisk' | grep -v '^\\*$');
+        while IFS= read -r service; do
+          [ -z "$service" ] && continue
+          networksetup -setwebproxystate "$service" off 2>/dev/null
+          networksetup -setsecurewebproxystate "$service" off 2>/dev/null
+          networksetup -setsocksfirewallproxystate "$service" off 2>/dev/null
+        done <<< "$services"
+        """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-c", script]
+        try? process.run()
+        process.waitUntilExit()
+    }
+
+    private func installScript() -> String {
+        let managedCiadpiPath = SettingsStore.shared.managedCiadpiPath
+        let managedSpoofdpiPath = SettingsStore.shared.managedSpoofdpiPath
+        let managedDir = URL(fileURLWithPath: managedCiadpiPath).deletingLastPathComponent().path
+        return """
+        set -e
+        mkdir -p '\(managedDir)'
+
+        if command -v cc >/dev/null 2>&1 && command -v make >/dev/null 2>&1; then
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT INT TERM
+          cd "$tmpdir"
+          curl -fsSL https://codeload.github.com/hufrea/byedpi/tar.gz/refs/heads/main | tar -xz --strip-components=1
+          make >/dev/null
+          install -m 755 ciadpi '\(managedCiadpiPath)'
+        fi
+
+        python3 <<'PY'
+        import json
+        import os
+        import platform
+        import shutil
+        import tarfile
+        import tempfile
+        import urllib.request
+
+        api_url = "https://api.github.com/repos/xvzc/spoofdpi/releases/latest"
+        target = r"\(managedSpoofdpiPath)"
+        arch = platform.machine().lower()
+        suffix = "darwin_arm64.tar.gz" if arch in ("arm64", "aarch64") else "darwin_x86_64.tar.gz"
+
+        with urllib.request.urlopen(api_url) as response:
+            release = json.load(response)
+
+        asset = next((item for item in release.get("assets", []) if item.get("name", "").endswith(suffix)), None)
+        if asset is None:
+            raise SystemExit(f"Missing SpoofDPI asset for {suffix}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = os.path.join(tmp, "spoofdpi.tar.gz")
+            urllib.request.urlretrieve(asset["browser_download_url"], archive_path)
+            with tarfile.open(archive_path, "r:gz") as archive:
+                member = next((m for m in archive.getmembers() if os.path.basename(m.name) == "spoofdpi"), None)
+                if member is None:
+                    raise SystemExit("spoofdpi binary not found in archive")
+                archive.extract(member, tmp)
+                extracted_path = os.path.join(tmp, member.name)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy2(extracted_path, target)
+                os.chmod(target, 0o755)
+        PY
+
+        if [ ! -x '\(managedCiadpiPath)' ] && [ ! -x '\(managedSpoofdpiPath)' ]; then
+          echo 'No supported backends were installed.' >&2
+          exit 1
+        fi
+
+        exit 0
+        """
+    }
+
+    private func waitForBackendReady(
+        engine: BypassEngine,
+        process: Process,
+        port: Int,
+        timeout: TimeInterval = 6.0,
+        completion: @escaping (Bool) -> Void
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                if !process.isRunning {
+                    completion(false)
+                    return
+                }
+                if self.isLocalPortReachable(port: port) {
+                    AppLogger.log("[Manager] \(engine.displayName) is ready on port \(port).")
+                    completion(true)
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+            completion(false)
+        }
+    }
+
+    private func isLocalPortReachable(port: Int) -> Bool {
+        guard let endpointPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return false }
+        let semaphore = DispatchSemaphore(value: 0)
+        let connection = NWConnection(host: "127.0.0.1", port: endpointPort, using: .tcp)
+        let queue = DispatchQueue(label: "com.iddictive.dpikiller.readiness")
+        var reachable = false
+
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                reachable = true
+                semaphore.signal()
+            case .failed(_), .cancelled:
+                semaphore.signal()
+            default:
+                break
+            }
+        }
+
+        connection.start(queue: queue)
+        _ = semaphore.wait(timeout: .now() + 1.0)
+        connection.cancel()
+        return reachable
     }
 }

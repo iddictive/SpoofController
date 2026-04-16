@@ -139,14 +139,7 @@ final class SpeedTestManager: NSObject, URLSessionDownloadDelegate, URLSessionTa
         let config = URLSessionConfiguration.ephemeral
         if DPIKillerManager.shared.isRunning {
             let port = Int(SettingsStore.shared.localPort) ?? 8080
-            config.connectionProxyDictionary = [
-                kCFNetworkProxiesHTTPEnable: 1,
-                kCFNetworkProxiesHTTPProxy: "127.0.0.1",
-                kCFNetworkProxiesHTTPPort: port,
-                kCFNetworkProxiesHTTPSEnable: 1,
-                kCFNetworkProxiesHTTPSProxy: "127.0.0.1",
-                kCFNetworkProxiesHTTPSPort: port
-            ]
+            config.connectionProxyDictionary = SettingsStore.shared.resolvedEngine.sessionProxyDictionary(port: port)
         }
         session = URLSession(configuration: config, delegate: self, delegateQueue: delegateQueue)
         startTime = Date()
@@ -164,14 +157,7 @@ final class SpeedTestManager: NSObject, URLSessionDownloadDelegate, URLSessionTa
         let config = URLSessionConfiguration.ephemeral
         if DPIKillerManager.shared.isRunning {
             let port = Int(SettingsStore.shared.localPort) ?? 8080
-            config.connectionProxyDictionary = [
-                kCFNetworkProxiesHTTPEnable: 1,
-                kCFNetworkProxiesHTTPProxy: "127.0.0.1",
-                kCFNetworkProxiesHTTPPort: port,
-                kCFNetworkProxiesHTTPSEnable: 1,
-                kCFNetworkProxiesHTTPSProxy: "127.0.0.1",
-                kCFNetworkProxiesHTTPSPort: port
-            ]
+            config.connectionProxyDictionary = SettingsStore.shared.resolvedEngine.sessionProxyDictionary(port: port)
         }
 
         uploadSession?.invalidateAndCancel()
@@ -249,14 +235,7 @@ final class DiagnosticsManager: NSObject {
         let config = URLSessionConfiguration.ephemeral
         let port = Int(SettingsStore.shared.localPort) ?? 8080
 
-        config.connectionProxyDictionary = [
-            kCFNetworkProxiesHTTPEnable: 1,
-            kCFNetworkProxiesHTTPProxy: "127.0.0.1",
-            kCFNetworkProxiesHTTPPort: port,
-            kCFNetworkProxiesHTTPSEnable: 1,
-            kCFNetworkProxiesHTTPSProxy: "127.0.0.1",
-            kCFNetworkProxiesHTTPSPort: port
-        ]
+        config.connectionProxyDictionary = SettingsStore.shared.resolvedEngine.sessionProxyDictionary(port: port)
         config.timeoutIntervalForRequest = 5.0
 
         let session = URLSession(configuration: config)

@@ -66,6 +66,9 @@ final class SettingsWindowController: NSWindowController {
     private let fixedContentSize = SettingsWindowController.defaultContentSize
 
     var pathField: NSTextField!
+    var backendModeButton: NSPopUpButton!
+    var backendSummaryLabel: NSTextField!
+    var backendPathHintLabel: NSTextField!
     var manualArgsField: NSTextField!
     var ttlField: NSTextField!
     var splitModeButton: NSPopUpButton!
@@ -76,9 +79,13 @@ final class SettingsWindowController: NSWindowController {
     var dnsAddrField: NSTextField!
     var dnsModeButton: NSPopUpButton!
     var dnsHttpsUrlField: NSTextField!
+    var dnsHintLabel: NSTextField!
     var hotspotStatusLabel: NSTextField!
     var hotspotFixButton: NSButton!
     var checkboxes: [NSButton] = []
+    var optionButtons: [String: NSButton] = [:]
+    var optionRows: [String: NSView] = [:]
+    var dnsControls: [NSControl] = []
 
     let options = [
         ArgumentOption(flag: "--system-proxy", description: L10n.shared.descSystemProxy),
@@ -212,11 +219,30 @@ final class SettingsWindowController: NSWindowController {
         let coreSection = createSection(
             title: L10n.shared.sectionCore,
             subtitle: L10n.shared.isRussian
-                ? "Путь к бинарнику и базовая конфигурация запуска."
-                : "Binary path and base launch configuration."
+                ? "Выбор backend-а и базовая конфигурация запуска."
+                : "Backend selection and launch configuration."
         )
+        backendModeButton = themedPopup(
+            items: [
+                L10n.shared.backendAuto,
+                L10n.shared.backendCiadpi,
+                L10n.shared.backendSpoofdpi,
+                L10n.shared.backendCustom
+            ],
+            selected: localizedBackendTitle(for: SettingsStore.shared.backendSelection)
+        )
+        backendModeButton.target = self
+        backendModeButton.action = #selector(backendSelectionChanged)
+        addRow(label: L10n.shared.backendModeTitle, control: backendModeButton, to: coreSection.stack)
+
+        backendSummaryLabel = AppTheme.makeSecondaryText("")
+        addRow(label: L10n.shared.backendSummaryTitle, control: backendSummaryLabel, to: coreSection.stack)
+
         pathField = themedTextField(value: SettingsStore.shared.binaryPath, placeholder: L10n.shared.binaryPlaceholder)
-        addRow(label: L10n.shared.binaryPath, control: pathField, to: coreSection.stack, tooltip: L10n.shared.tipBinaryPath)
+        addRow(label: L10n.shared.binaryPathCustom, control: pathField, to: coreSection.stack, tooltip: L10n.shared.tipBinaryPath)
+
+        backendPathHintLabel = AppTheme.makeSecondaryText(L10n.shared.backendPathHint)
+        addIndentedRow(content: backendPathHintLabel, to: coreSection.stack)
         addSection(coreSection)
 
         let networkSection = createSection(
@@ -260,6 +286,7 @@ final class SettingsWindowController: NSWindowController {
             cb.state = selected.contains(option.flag) ? .on : .off
             cb.font = .systemFont(ofSize: 13, weight: .regular)
             checkboxes.append(cb)
+            optionButtons[option.flag] = cb
 
             let optionStack = NSStackView()
             optionStack.orientation = .vertical
@@ -282,6 +309,7 @@ final class SettingsWindowController: NSWindowController {
             ])
             optionStack.addArrangedSubview(descContainer)
             addToggleRow(content: optionStack, to: dpiSection.stack)
+            optionRows[option.flag] = optionStack
         }
 
         ttlField = themedTextField(value: SettingsStore.shared.defaultTTL, placeholder: L10n.shared.ttlPlaceholder, width: 90)
@@ -324,14 +352,20 @@ final class SettingsWindowController: NSWindowController {
                 ? "Настройки DNS и DoH."
                 : "DNS resolver and DoH settings."
         )
+        dnsHintLabel = AppTheme.makeSecondaryText(L10n.shared.dnsDisabledForCiadpi)
+        dnsSection.stack.addArrangedSubview(dnsHintLabel)
+
         dnsAddrField = themedTextField(value: SettingsStore.shared.dnsAddr, placeholder: "8.8.8.8:53")
         addRow(label: L10n.shared.dnsAddrTitle, control: dnsAddrField, to: dnsSection.stack, tooltip: L10n.shared.tipDNSAddr)
+        dnsControls.append(dnsAddrField)
 
         dnsModeButton = themedPopup(items: ["udp", "https", "system"], selected: SettingsStore.shared.dnsMode)
         addRow(label: L10n.shared.dnsModeTitle, control: dnsModeButton, to: dnsSection.stack, tooltip: L10n.shared.tipDNSSystem)
+        dnsControls.append(dnsModeButton)
 
         dnsHttpsUrlField = themedTextField(value: SettingsStore.shared.dnsHttpsUrl, placeholder: "https://dns.google/dns-query")
         addRow(label: "DoH URL", control: dnsHttpsUrlField, to: dnsSection.stack)
+        dnsControls.append(dnsHttpsUrlField)
         addSection(dnsSection)
 
         let appSection = createSection(
@@ -372,6 +406,8 @@ final class SettingsWindowController: NSWindowController {
         manualSection.stack.addArrangedSubview(manualArgsField)
         manualArgsField.widthAnchor.constraint(equalTo: manualSection.stack.widthAnchor).isActive = true
         addSection(manualSection)
+
+        refreshBackendUI()
     }
 
     private func createSection(title: String, subtitle: String? = nil) -> SettingsSectionView {
@@ -397,6 +433,83 @@ final class SettingsWindowController: NSWindowController {
         AppTheme.styleInput(popup)
         popup.translatesAutoresizingMaskIntoConstraints = false
         return popup
+    }
+
+    private func localizedBackendTitle(for selection: BackendSelection) -> String {
+        switch selection {
+        case .automatic:
+            return L10n.shared.backendAuto
+        case .ciadpi:
+            return L10n.shared.backendCiadpi
+        case .spoofdpi:
+            return L10n.shared.backendSpoofdpi
+        case .custom:
+            return L10n.shared.backendCustom
+        }
+    }
+
+    private func selectedBackendSelection() -> BackendSelection {
+        switch backendModeButton.titleOfSelectedItem {
+        case L10n.shared.backendCiadpi:
+            return .ciadpi
+        case L10n.shared.backendSpoofdpi:
+            return .spoofdpi
+        case L10n.shared.backendCustom:
+            return .custom
+        default:
+            return .automatic
+        }
+    }
+
+    private func resolvedBackendPath() -> String {
+        SettingsStore.shared.resolvedBinaryPath(
+            for: selectedBackendSelection(),
+            customPath: pathField?.stringValue
+        )
+    }
+
+    private func refreshBackendUI() {
+        guard backendModeButton != nil, pathField != nil else { return }
+
+        let selection = selectedBackendSelection()
+        let resolvedPath = resolvedBackendPath()
+        let engine = SettingsStore.shared.currentEngine(for: resolvedPath)
+        let isCustom = selection == .custom
+        let isSpoofdpi = engine == .spoofdpi
+
+        pathField.stringValue = resolvedPath
+        pathField.isEditable = isCustom
+        pathField.isEnabled = isCustom
+        pathField.textColor = isCustom ? AppTheme.textPrimary : AppTheme.textSecondary
+        pathField.backgroundColor = isCustom ? .controlBackgroundColor : .quaternaryLabelColor.withAlphaComponent(0.08)
+
+        let pathState = FileManager.default.fileExists(atPath: resolvedPath)
+            ? URL(fileURLWithPath: resolvedPath).lastPathComponent
+            : L10n.shared.backendMissingSuffix
+        backendSummaryLabel.stringValue = "\(engine.displayName) • \(engine.proxyDescription) • \(pathState)"
+
+        backendPathHintLabel.isHidden = isCustom
+        dnsHintLabel.isHidden = isSpoofdpi
+        dnsControls.forEach {
+            $0.isEnabled = isSpoofdpi
+            $0.alphaValue = isSpoofdpi ? 1 : 0.55
+        }
+
+        let unsupportedFlags: Set<String>
+        if isSpoofdpi {
+            unsupportedFlags = ["--policy-auto"]
+        } else {
+            unsupportedFlags = ["--silent", "--dns-ipv4-only", "--debug"]
+        }
+        for option in options {
+            let enabled = !unsupportedFlags.contains(option.flag)
+            optionButtons[option.flag]?.isEnabled = enabled
+            optionRows[option.flag]?.alphaValue = enabled ? 1 : 0.45
+        }
+
+        manualArgsField.placeholderString = isSpoofdpi
+            ? L10n.shared.manualArgsPlaceholderSpoofdpi
+            : L10n.shared.manualArgsPlaceholderCiadpi
     }
 
     private func addRow(label: String, control: NSView, to stack: NSStackView, tooltip: String? = nil) {
@@ -457,34 +570,11 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func manualArgsValue() -> String {
-        let allArgs = SettingsStore.shared.customArgs.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-        var manualParts: [String] = []
-        var index = 0
-        while index < allArgs.count {
-            let arg = allArgs[index]
-            if [
-                "--default-ttl",
-                "--https-split-mode",
-                "--listen-addr",
-                "--dns-addr",
-                "--dns-mode",
-                "--dns-https-url",
-                "--https-disorder",
-                "--https-fake-count",
-                "--https-chunk-size"
-            ].contains(arg) {
-                index += 1
-                if index < allArgs.count && !allArgs[index].hasPrefix("-") {
-                    index += 1
-                }
-            } else if options.contains(where: { $0.flag == arg }) {
-                index += 1
-            } else {
-                manualParts.append(arg)
-                index += 1
-            }
-        }
-        return manualParts.joined(separator: " ")
+        SettingsStore.shared.manualArgsString(for: pathField?.stringValue)
+    }
+
+    @objc func backendSelectionChanged() {
+        refreshBackendUI()
     }
 
     @objc func cancelAction() {
@@ -584,7 +674,8 @@ final class SettingsWindowController: NSWindowController {
         let clampedFakeCount = (Int(httpsFakeCountField.stringValue.trimmingCharacters(in: .whitespaces)) ?? 0).clamped(to: 0...100)
         let clampedChunkSize = (Int(httpsChunkSizeField.stringValue.trimmingCharacters(in: .whitespaces)) ?? 100).clamped(to: 1...1000)
 
-        SettingsStore.shared.binaryPath = pathField.stringValue
+        let backendSelection = selectedBackendSelection()
+        SettingsStore.shared.applyBackendSelection(backendSelection, customPath: pathField.stringValue)
         SettingsStore.shared.defaultTTL = String(clampedTTL)
         SettingsStore.shared.splitMode = splitModeButton.titleOfSelectedItem ?? "sni"
         SettingsStore.shared.httpsDisorder = httpsDisorderButton.state == .on
