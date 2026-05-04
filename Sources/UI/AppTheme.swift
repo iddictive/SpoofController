@@ -47,6 +47,20 @@ enum AppTheme {
         }
     }
 
+    static func styleUtilityWindow(_ window: NSWindow?, minSize: NSSize? = nil) {
+        guard let window else { return }
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .visible
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = settingsBackground
+        window.isOpaque = true
+        window.hasShadow = true
+        if let minSize {
+            window.minSize = minSize
+        }
+    }
+
     static func makeWindowBackground(material: NSVisualEffectView.Material = .windowBackground) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = material
@@ -60,6 +74,14 @@ enum AppTheme {
         view.wantsLayer = true
         view.layer?.backgroundColor = settingsBackground.cgColor
         return view
+    }
+
+    static func styleSettingsSurface(_ view: NSView, cornerRadius: CGFloat = 8) {
+        view.wantsLayer = true
+        view.layer?.cornerRadius = cornerRadius
+        view.layer?.backgroundColor = settingsSurface.cgColor
+        view.layer?.borderWidth = 1
+        view.layer?.borderColor = settingsBorder.cgColor
     }
 
     static func stylePrimaryButton(_ button: NSButton) {
@@ -172,7 +194,7 @@ enum AppTheme {
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
+        separator.layer?.backgroundColor = settingsSeparator.cgColor
         return separator
     }
 }
@@ -185,10 +207,10 @@ final class MetricCardView: NSView {
     init(title: String, unit: String) {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 10
-        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        layer?.cornerRadius = 8
+        layer?.backgroundColor = AppTheme.settingsSurface.cgColor
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
+        layer?.borderColor = AppTheme.settingsBorder.cgColor
 
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -199,14 +221,14 @@ final class MetricCardView: NSView {
 
         titleLabel.stringValue = title.uppercased()
         titleLabel.font = .systemFont(ofSize: 11, weight: .semibold)
-        titleLabel.textColor = AppTheme.textSecondary
+        titleLabel.textColor = AppTheme.settingsTextSecondary
 
         valueLabel.font = .systemFont(ofSize: 28, weight: .semibold)
-        valueLabel.textColor = AppTheme.textPrimary
+        valueLabel.textColor = AppTheme.settingsTextPrimary
 
         unitLabel.stringValue = unit
         unitLabel.font = .systemFont(ofSize: 12, weight: .regular)
-        unitLabel.textColor = AppTheme.textSecondary
+        unitLabel.textColor = AppTheme.settingsTextSecondary
 
         stack.addArrangedSubview(titleLabel)
         stack.addArrangedSubview(valueLabel)

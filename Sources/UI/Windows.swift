@@ -113,14 +113,14 @@ final class SpeedTestWindowController: NSWindowController, NSWindowDelegate {
         )
         window.center()
         window.title = L10n.shared.speedTest
-        AppTheme.styleWindow(window, minSize: NSSize(width: 620, height: 360))
+        AppTheme.styleUtilityWindow(window, minSize: NSSize(width: 620, height: 360))
         self.init(window: window)
         window.delegate = self
         setupUI()
     }
 
     private func setupUI() {
-        let background = AppTheme.makeWindowBackground()
+        let background = AppTheme.makeSettingsBackground()
         window?.contentView = background
 
         let contentStack = NSStackView()
@@ -130,11 +130,7 @@ final class SpeedTestWindowController: NSWindowController, NSWindowDelegate {
         background.addSubview(contentStack)
         contentStack.fill(parent: background, padding: 20)
 
-        stageLabel = AppTheme.makeSecondaryText(
-            L10n.shared.isRussian
-                ? "Cloudflare probe через текущую сетевую цепочку приложения."
-                : "Cloudflare probe routed through the app's current network chain."
-        )
+        stageLabel = AppTheme.makeSettingsSecondaryText(L10n.shared.speedTestReady)
         contentStack.addArrangedSubview(stageLabel)
 
         pingCard = metricContainer(title: L10n.shared.ping, unit: L10n.shared.ms)
@@ -208,16 +204,21 @@ final class SpeedTestWindowController: NSWindowController, NSWindowDelegate {
                     self?.startButton.title = L10n.shared.startTest
                     self?.progressIndicator.stopAnimation(nil)
                     self?.progressIndicator.isHidden = true
-                    self?.stageLabel.stringValue = L10n.shared.isRussian ? "Тест завершён." : "Test complete."
+                    self?.stageLabel.stringValue = L10n.shared.speedTestComplete
                 }
             }
 
             SpeedTestManager.shared.onError = { [weak self] error in
                 DispatchQueue.main.async {
                     let alert = NSAlert()
-                    alert.messageText = "Error"
+                    alert.alertStyle = .warning
+                    alert.messageText = L10n.shared.speedTestFailed
                     alert.informativeText = error
-                    alert.runModal()
+                    if let window = self?.window {
+                        alert.beginSheetModal(for: window)
+                    } else {
+                        alert.runModal()
+                    }
                     self?.startButton.title = L10n.shared.startTest
                     self?.progressIndicator.stopAnimation(nil)
                     self?.progressIndicator.isHidden = true
@@ -228,6 +229,10 @@ final class SpeedTestWindowController: NSWindowController, NSWindowDelegate {
             SpeedTestManager.shared.startTest()
         } else {
             SpeedTestManager.shared.stopTest()
+            startButton.title = L10n.shared.startTest
+            progressIndicator.stopAnimation(nil)
+            progressIndicator.isHidden = true
+            stageLabel.stringValue = L10n.shared.speedTestReady
         }
     }
 
@@ -254,7 +259,7 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
         )
         window.center()
         window.title = L10n.shared.logsTitle
-        AppTheme.styleWindow(window, minSize: NSSize(width: 620, height: 380))
+        AppTheme.styleUtilityWindow(window, minSize: NSSize(width: 620, height: 380))
         self.init(window: window)
         window.delegate = self
         setupUI()
@@ -267,7 +272,7 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func setupUI() {
-        let background = AppTheme.makeWindowBackground()
+        let background = AppTheme.makeSettingsBackground()
         window?.contentView = background
 
         let contentStack = NSStackView()
@@ -277,26 +282,27 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
         background.addSubview(contentStack)
         contentStack.fill(parent: background, padding: 20)
 
-        let subtitle = AppTheme.makeSecondaryText(
-            L10n.shared.isRussian
-                ? "Живой circular buffer без спама в память."
-                : "Live circular buffer without runaway memory growth."
-        )
-        liveBadge = AppTheme.makeStatusBadge(text: "STREAMING", color: AppTheme.accentSoft)
+        let subtitle = AppTheme.makeSettingsSecondaryText(L10n.shared.logsDescription)
+        liveBadge = AppTheme.makeStatusBadge(text: L10n.shared.logsLiveStatus, color: AppTheme.accentSoft)
         contentStack.addArrangedSubview(subtitle)
         contentStack.addArrangedSubview(liveBadge)
 
         scrollView = NSScrollView()
-        scrollView.drawsBackground = false
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = AppTheme.settingsSurface
+        scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.contentView.drawsBackground = false
+        AppTheme.styleSettingsSurface(scrollView)
 
         textView = NSTextView()
         textView.isEditable = false
         textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.drawsBackground = false
-        textView.textColor = AppTheme.textPrimary
-        textView.textContainerInset = NSSize(width: 8, height: 10)
+        textView.textColor = AppTheme.settingsTextPrimary
+        textView.insertionPointColor = AppTheme.settingsTextPrimary
+        textView.textContainerInset = NSSize(width: 10, height: 10)
         scrollView.documentView = textView
         contentStack.addArrangedSubview(scrollView)
         scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
@@ -374,14 +380,14 @@ final class HelpWindowController: NSWindowController {
         )
         window.center()
         window.title = L10n.shared.helpTitle
-        AppTheme.styleWindow(window, minSize: NSSize(width: 660, height: 500))
+        AppTheme.styleUtilityWindow(window, minSize: NSSize(width: 660, height: 500))
         self.init(window: window)
         setupUI()
         loadReadme()
     }
 
     func setupUI() {
-        let background = AppTheme.makeWindowBackground()
+        let background = AppTheme.makeSettingsBackground()
         window?.contentView = background
 
         webView = WKWebView()
@@ -395,7 +401,7 @@ final class HelpWindowController: NSWindowController {
         guard let path = Bundle.main.path(forResource: "README", ofType: "md"),
               let content = try? String(contentsOfFile: path, encoding: .utf8) else {
             webView.loadHTMLString(
-                "<html><body>\(L10n.shared.isRussian ? "Инструкция недоступна." : "Manual not available.")</body></html>",
+                "<html><body style=\"margin:0;padding:28px;font:15px -apple-system;color:#f0f0f0;background:#17191e;\">\(L10n.shared.helpUnavailable)</body></html>",
                 baseURL: nil
             )
             return
@@ -406,26 +412,18 @@ final class HelpWindowController: NSWindowController {
         <html>
         <head>
         <style>
-        :root { color-scheme: light dark; }
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; line-height: 1.65; padding: 24px 28px; color: #1d1d1f; background: #ffffff; }
-        a { color: #0a84ff; }
-        h1, h2, h3 { color: #1d1d1f; }
-        h1 { font-size: 28px; border-bottom: 1px solid #d2d2d7; padding-bottom: 10px; }
+        :root { color-scheme: dark; }
+        html { background: #17191e; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; line-height: 1.65; padding: 24px 28px; color: #f0f0f0; background: #17191e; }
+        a { color: #6aa7ff; }
+        h1, h2, h3 { color: #f0f0f0; }
+        h1 { font-size: 28px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; }
         h2 { margin-top: 30px; }
-        pre { background: #f5f5f7; padding: 14px; border-radius: 10px; overflow-x: auto; border: 1px solid #d2d2d7; }
-        code { background: #f5f5f7; padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-        img { max-width: 100%; border-radius: 8px; border: 1px solid #d2d2d7; }
+        pre { background: #2c2f37; padding: 14px; border-radius: 8px; overflow-x: auto; border: 1px solid rgba(255,255,255,0.08); }
+        code { background: #2c2f37; padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        img { max-width: 100%; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); }
         li { margin: 6px 0; }
-        hr { border: none; height: 1px; background: #d2d2d7; }
-        @media (prefers-color-scheme: dark) {
-        body { color: #f5f5f7; background: #1c1c1e; }
-        a { color: #4ea1ff; }
-        h1, h2, h3 { color: #ffffff; }
-        h1 { border-bottom-color: #3a3a3c; }
-        pre, code { background: #2c2c2e; border-color: #3a3a3c; }
-        img { border-color: #3a3a3c; }
-        hr { background: #3a3a3c; }
-        }
+        hr { border: none; height: 1px; background: rgba(255,255,255,0.08); }
         </style>
         </head>
         <body>\(html)</body>
@@ -545,12 +543,12 @@ final class LoadingWindowController: NSWindowController {
 
         let title = NSTextField(labelWithString: "DPI Killer")
         title.font = .systemFont(ofSize: 21, weight: .bold)
-        title.textColor = AppTheme.textPrimary
+        title.textColor = AppTheme.settingsTextPrimary
         title.alignment = .center
 
         let subtitle = NSTextField(labelWithString: L10n.shared.preparingBypass)
         subtitle.font = .systemFont(ofSize: 13, weight: .regular)
-        subtitle.textColor = AppTheme.textSecondary
+        subtitle.textColor = AppTheme.settingsTextSecondary
         subtitle.alignment = .center
         sublabel = subtitle
 
@@ -643,12 +641,12 @@ final class LoaderBackgroundView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 18
         layer?.masksToBounds = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        layer?.backgroundColor = AppTheme.settingsBackground.cgColor
 
         gradientLayer.colors = [
-            NSColor.windowBackgroundColor.blended(withFraction: 0.32, of: NSColor.systemOrange)?.cgColor ?? NSColor.windowBackgroundColor.cgColor,
-            NSColor.windowBackgroundColor.blended(withFraction: 0.18, of: NSColor.systemYellow)?.cgColor ?? NSColor.windowBackgroundColor.cgColor,
-            NSColor.windowBackgroundColor.blended(withFraction: 0.06, of: NSColor.systemBrown)?.cgColor ?? NSColor.windowBackgroundColor.cgColor
+            AppTheme.settingsSurfaceRaised.blended(withFraction: 0.12, of: AppTheme.warning)?.cgColor ?? AppTheme.settingsSurfaceRaised.cgColor,
+            AppTheme.settingsSurface.blended(withFraction: 0.08, of: AppTheme.warning)?.cgColor ?? AppTheme.settingsSurface.cgColor,
+            AppTheme.settingsBackground.cgColor
         ]
         gradientLayer.startPoint = CGPoint(x: 0, y: 1)
         gradientLayer.endPoint = CGPoint(x: 1, y: 0)
@@ -681,10 +679,10 @@ final class LoaderProgressView: NSView {
         layer?.addSublayer(trackLayer)
         layer?.addSublayer(fillLayer)
 
-        trackLayer.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        trackLayer.backgroundColor = NSColor.white.withAlphaComponent(0.12).cgColor
         fillLayer.colors = [
-            NSColor.white.withAlphaComponent(0.95).cgColor,
-            NSColor.systemYellow.withAlphaComponent(0.95).cgColor
+            AppTheme.warning.withAlphaComponent(0.96).cgColor,
+            NSColor.systemYellow.withAlphaComponent(0.92).cgColor
         ]
         fillLayer.startPoint = CGPoint(x: 0, y: 0.5)
         fillLayer.endPoint = CGPoint(x: 1, y: 0.5)

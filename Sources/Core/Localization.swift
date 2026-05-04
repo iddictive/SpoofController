@@ -136,6 +136,9 @@ struct L10n {
 
     var speedTest: String { isRussian ? "Тест скорости" : "Speed Test" }
     var speedTestTitle: String { isRussian ? "Тестирование скорости" : "Speed Testing" }
+    var speedTestReady: String { isRussian ? "Готово к проверке соединения." : "Ready to test the connection." }
+    var speedTestComplete: String { isRussian ? "Тест завершен." : "Test complete." }
+    var speedTestFailed: String { isRussian ? "Тест скорости не завершен" : "Speed test could not finish" }
     var startTest: String { isRussian ? "Начать тест" : "Start Test" }
     var stopTest: String { isRussian ? "Остановить" : "Stop Test" }
     var testingDownload: String { isRussian ? "Загрузка..." : "Downloading..." }
@@ -148,8 +151,11 @@ struct L10n {
     var mbps: String { isRussian ? "Мбит/с" : "Mbps" }
 
     var logsTitle: String { isRussian ? "Логи событий" : "Event Logs" }
+    var logsDescription: String { isRussian ? "События текущего сеанса." : "Current session events." }
+    var logsLiveStatus: String { isRussian ? "Запись активна" : "Live capture" }
     var clearLogs: String { isRussian ? "Очистить" : "Clear" }
     var copyLogs: String { isRussian ? "Копировать" : "Copy" }
+    var helpUnavailable: String { isRussian ? "Инструкция недоступна." : "Manual is unavailable." }
 
     var diagTitle: String { isRussian ? "Диагностика связи" : "Connectivity Diagnostics" }
     var diagChecking: String { isRussian ? "Проверка..." : "Checking..." }
