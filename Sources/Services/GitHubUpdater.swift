@@ -184,6 +184,9 @@ final class GitHubUpdater {
         completion: ((NSApplication.ModalResponse) -> Void)? = nil
     ) {
         NSApp.activate(ignoringOtherApps: true)
+        if alert.icon == nil {
+            alert.icon = DPISettingsAssets.appIcon()
+        }
         if let window = alertParentWindow() {
             alert.beginSheetModal(for: window) { response in
                 completion?(response)

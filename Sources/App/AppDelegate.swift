@@ -34,6 +34,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.showSettings()
             }
         }
+        if CommandLine.arguments.contains("--open-speed-test") {
+            DispatchQueue.main.async { [weak self] in
+                self?.showSpeedTest()
+            }
+        }
+        if CommandLine.arguments.contains("--open-logs") {
+            DispatchQueue.main.async { [weak self] in
+                self?.showLogs()
+            }
+        }
+        if CommandLine.arguments.contains("--open-help") {
+            DispatchQueue.main.async { [weak self] in
+                self?.showHelp()
+            }
+        }
 
         if loadingWindow == nil {
             loadingWindow = LoadingWindowController()
@@ -42,7 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loadingWindow?.showWithFade()
 
         DPIKillerManager.shared.recoverEnvironment { [weak self] in
-            GitHubUpdater.shared.checkForUpdates()
+            if !CommandLine.arguments.contains("--skip-update-check") {
+                GitHubUpdater.shared.checkForUpdates()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 self?.attemptStart()
             }
@@ -323,6 +340,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         completion: ((NSApplication.ModalResponse) -> Void)? = nil
     ) {
         NSApp.activate(ignoringOtherApps: true)
+        if alert.icon == nil {
+            alert.icon = DPISettingsAssets.appIcon()
+        }
         if let window = preferredWindow ?? alertParentWindow() {
             alert.beginSheetModal(for: window) { response in
                 completion?(response)

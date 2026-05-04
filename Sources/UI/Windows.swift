@@ -96,159 +96,303 @@ final class SettingsWindowController: NSWindowController {
     }
 }
 
+final class SpeedTestViewModel: ObservableObject {
+    @Published var ping = "--"
+    @Published var download = "--"
+    @Published var upload = "--"
+    @Published var status = L10n.shared.speedTestReady
+    @Published var isRunning = false
+    @Published var errorMessage: String?
+
+    func toggle() {
+        isRunning ? stop() : start()
+    }
+
+    func start() {
+        isRunning = true
+        status = L10n.shared.testingPing
+
+        SpeedTestManager.shared.onUpdate = { [weak self] ping, down, up in
+            DispatchQueue.main.async {
+                self?.ping = "\(Int(ping))"
+                self?.download = String(format: "%.2f", down)
+                self?.upload = String(format: "%.2f", up)
+                if up > 0 {
+                    self?.status = L10n.shared.testingUpload
+                } else if down > 0 {
+                    self?.status = L10n.shared.testingDownload
+                }
+            }
+        }
+
+        SpeedTestManager.shared.onFinished = { [weak self] in
+            DispatchQueue.main.async {
+                self?.isRunning = false
+                self?.status = L10n.shared.speedTestComplete
+            }
+        }
+
+        SpeedTestManager.shared.onError = { [weak self] error in
+            DispatchQueue.main.async {
+                self?.isRunning = false
+                self?.status = L10n.shared.speedTestFailed
+                self?.errorMessage = error
+            }
+        }
+
+        SpeedTestManager.shared.startTest()
+    }
+
+    func stop() {
+        SpeedTestManager.shared.stopTest()
+        isRunning = false
+        status = L10n.shared.speedTestReady
+    }
+
+    func cleanup() {
+        SpeedTestManager.shared.onUpdate = nil
+        SpeedTestManager.shared.onFinished = nil
+        SpeedTestManager.shared.onError = nil
+        SpeedTestManager.shared.stopTest()
+    }
+}
+
+struct SpeedTestView: View {
+    @ObservedObject var model: SpeedTestViewModel
+
+    private var showingError: Binding<Bool> {
+        Binding(
+            get: { model.errorMessage != nil },
+            set: { if !$0 { model.errorMessage = nil } }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: "speedometer")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(DPISettingsTokens.accent)
+                    .frame(width: 34, height: 34)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(DPISettingsTokens.accent.opacity(0.14)))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.shared.speedTest)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(DPISettingsTokens.primaryText)
+                    Text(model.status)
+                        .font(DPISettingsTokens.captionFont)
+                        .foregroundStyle(DPISettingsTokens.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 12) {
+                SpeedMetricTile(title: L10n.shared.ping, value: model.ping, unit: L10n.shared.ms)
+                SpeedMetricTile(title: L10n.shared.download, value: model.download, unit: L10n.shared.mbps)
+                SpeedMetricTile(title: L10n.shared.upload, value: model.upload, unit: L10n.shared.mbps)
+            }
+
+            Group {
+                if model.isRunning {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                } else {
+                    Capsule()
+                        .fill(DPISettingsTokens.separator)
+                }
+            }
+            .controlSize(.small)
+            .opacity(model.isRunning ? 1 : 0)
+            .frame(height: 8)
+
+            HStack {
+                Spacer(minLength: 0)
+                Button(model.isRunning ? L10n.shared.stopTest : L10n.shared.startTest) {
+                    model.toggle()
+                }
+                .keyboardShortcut(.defaultAction)
+                .frame(width: 150)
+            }
+        }
+        .padding(.top, 28)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 18)
+        .frame(minWidth: 640, idealWidth: 640, maxWidth: .infinity, minHeight: 320, idealHeight: 320, maxHeight: .infinity)
+        .background(DPISettingsTokens.background)
+        .alert(L10n.shared.speedTestFailed, isPresented: showingError) {
+            Button(L10n.shared.ok) {
+                model.errorMessage = nil
+            }
+        } message: {
+            Text(model.errorMessage ?? "")
+        }
+    }
+}
+
+struct SpeedMetricTile: View {
+    let title: String
+    let value: String
+    let unit: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(DPISettingsTokens.badgeFont)
+                .foregroundStyle(DPISettingsTokens.secondaryText)
+                .lineLimit(1)
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(value)
+                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                    .foregroundStyle(DPISettingsTokens.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Text(unit)
+                    .font(DPISettingsTokens.captionFont)
+                    .foregroundStyle(DPISettingsTokens.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 112, maxHeight: 112, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(DPISettingsTokens.surface))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(DPISettingsTokens.border, lineWidth: 1))
+    }
+}
+
 final class SpeedTestWindowController: NSWindowController, NSWindowDelegate {
-    private var pingCard: MetricCardView!
-    private var downloadCard: MetricCardView!
-    private var uploadCard: MetricCardView!
-    private var progressIndicator: NSProgressIndicator!
-    private var startButton: NSButton!
-    private var stageLabel: NSTextField!
+    private let model = SpeedTestViewModel()
+    private var hostingController: NSHostingController<SpeedTestView>?
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 320),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         window.center()
         window.title = L10n.shared.speedTest
-        AppTheme.styleUtilityWindow(window, minSize: NSSize(width: 620, height: 360))
+        AppTheme.styleUtilityWindow(window, minSize: NSSize(width: 640, height: 320))
         self.init(window: window)
         window.delegate = self
         setupUI()
     }
 
     private func setupUI() {
-        let background = AppTheme.makeSettingsBackground()
-        window?.contentView = background
-
-        let contentStack = NSStackView()
-        contentStack.orientation = .vertical
-        contentStack.spacing = 16
-        contentStack.alignment = .leading
-        background.addSubview(contentStack)
-        contentStack.fill(parent: background, padding: 20)
-
-        stageLabel = AppTheme.makeSettingsSecondaryText(L10n.shared.speedTestReady)
-        contentStack.addArrangedSubview(stageLabel)
-
-        pingCard = metricContainer(title: L10n.shared.ping, unit: L10n.shared.ms)
-        downloadCard = metricContainer(title: L10n.shared.download, unit: L10n.shared.mbps)
-        uploadCard = metricContainer(title: L10n.shared.upload, unit: L10n.shared.mbps)
-
-        let metrics = NSGridView(views: [[pingCard!, downloadCard!, uploadCard!]])
-        metrics.rowSpacing = 0
-        metrics.columnSpacing = 16
-        metrics.translatesAutoresizingMaskIntoConstraints = false
-
-        progressIndicator = NSProgressIndicator()
-        progressIndicator.style = .bar
-        progressIndicator.isIndeterminate = true
-        progressIndicator.startAnimation(nil)
-        progressIndicator.isHidden = true
-        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
-
-        startButton = NSButton(title: L10n.shared.startTest, target: self, action: #selector(startClicked))
-        AppTheme.stylePrimaryButton(startButton)
-
-        let actions = NSStackView()
-        actions.orientation = .horizontal
-        actions.spacing = 0
-        actions.alignment = .centerY
-        actions.addArrangedSubview(NSView())
-        actions.addArrangedSubview(startButton)
-
-        contentStack.addArrangedSubview(metrics)
-        contentStack.addArrangedSubview(progressIndicator)
-        contentStack.addArrangedSubview(actions)
-
-        NSLayoutConstraint.activate([
-            metrics.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            progressIndicator.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            actions.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            startButton.widthAnchor.constraint(equalToConstant: 220),
-            startButton.heightAnchor.constraint(equalToConstant: 32)
-        ])
-    }
-
-    private func metricContainer(title: String, unit: String) -> MetricCardView {
-        let card = MetricCardView(title: title, unit: unit)
-        card.translatesAutoresizingMaskIntoConstraints = false
-        card.heightAnchor.constraint(equalToConstant: 150).isActive = true
-        return card
-    }
-
-    @objc private func startClicked() {
-        if startButton.title == L10n.shared.startTest {
-            startButton.title = L10n.shared.stopTest
-            progressIndicator.isHidden = false
-            progressIndicator.startAnimation(nil)
-            stageLabel.stringValue = L10n.shared.testingPing
-
-            SpeedTestManager.shared.onUpdate = { [weak self] ping, down, up in
-                DispatchQueue.main.async {
-                    self?.pingCard.update(value: "\(Int(ping))")
-                    self?.downloadCard.update(value: String(format: "%.2f", down))
-                    self?.uploadCard.update(value: String(format: "%.2f", up))
-                    if up > 0 {
-                        self?.stageLabel.stringValue = L10n.shared.testingUpload
-                    } else if down > 0 {
-                        self?.stageLabel.stringValue = L10n.shared.testingDownload
-                    }
-                }
-            }
-
-            SpeedTestManager.shared.onFinished = { [weak self] in
-                DispatchQueue.main.async {
-                    self?.startButton.title = L10n.shared.startTest
-                    self?.progressIndicator.stopAnimation(nil)
-                    self?.progressIndicator.isHidden = true
-                    self?.stageLabel.stringValue = L10n.shared.speedTestComplete
-                }
-            }
-
-            SpeedTestManager.shared.onError = { [weak self] error in
-                DispatchQueue.main.async {
-                    let alert = NSAlert()
-                    alert.alertStyle = .warning
-                    alert.messageText = L10n.shared.speedTestFailed
-                    alert.informativeText = error
-                    if let window = self?.window {
-                        alert.beginSheetModal(for: window)
-                    } else {
-                        alert.runModal()
-                    }
-                    self?.startButton.title = L10n.shared.startTest
-                    self?.progressIndicator.stopAnimation(nil)
-                    self?.progressIndicator.isHidden = true
-                    self?.stageLabel.stringValue = error
-                }
-            }
-
-            SpeedTestManager.shared.startTest()
-        } else {
-            SpeedTestManager.shared.stopTest()
-            startButton.title = L10n.shared.startTest
-            progressIndicator.stopAnimation(nil)
-            progressIndicator.isHidden = true
-            stageLabel.stringValue = L10n.shared.speedTestReady
-        }
+        let hostingController = NSHostingController(rootView: SpeedTestView(model: model))
+        self.hostingController = hostingController
+        window?.contentViewController = hostingController
     }
 
     func windowWillClose(_ notification: Notification) {
-        SpeedTestManager.shared.onUpdate = nil
-        SpeedTestManager.shared.onFinished = nil
-        SpeedTestManager.shared.onError = nil
-        SpeedTestManager.shared.stopTest()
+        model.cleanup()
         (NSApp.delegate as? AppDelegate)?.speedTestWindow = nil
     }
 }
 
+final class LogsViewModel: ObservableObject {
+    @Published var text = ""
+
+    func begin() {
+        LogStore.shared.setProcessCaptureEnabled(true)
+        LogStore.shared.onUpdate = { [weak self] in
+            DispatchQueue.main.async {
+                self?.refresh()
+            }
+        }
+        refresh()
+    }
+
+    func end() {
+        LogStore.shared.setProcessCaptureEnabled(false)
+        LogStore.shared.onUpdate = nil
+    }
+
+    func refresh() {
+        text = LogStore.shared.getAllLogs()
+    }
+
+    func clear() {
+        LogStore.shared.clear()
+        refresh()
+    }
+
+    func copy() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(LogStore.shared.getAllLogs(), forType: .string)
+    }
+}
+
+struct LogsView: View {
+    @ObservedObject var model: LogsViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(DPISettingsTokens.accent)
+                    .frame(width: 34, height: 34)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(DPISettingsTokens.accent.opacity(0.14)))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.shared.logsTitle)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(DPISettingsTokens.primaryText)
+                    Text(L10n.shared.logsDescription)
+                        .font(DPISettingsTokens.captionFont)
+                        .foregroundStyle(DPISettingsTokens.secondaryText)
+                }
+
+                SettingsBadge(title: L10n.shared.logsLiveStatus, style: .neutral)
+                Spacer(minLength: 0)
+
+                Button(L10n.shared.clearLogs) {
+                    model.clear()
+                }
+                Button(L10n.shared.copyLogs) {
+                    model.copy()
+                }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView([.vertical, .horizontal]) {
+                    Text(model.text.isEmpty ? L10n.shared.logsEmpty : model.text)
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(model.text.isEmpty ? DPISettingsTokens.mutedText : DPISettingsTokens.primaryText)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding(14)
+                        .id("log-end")
+                }
+                .background(RoundedRectangle(cornerRadius: 8).fill(DPISettingsTokens.surface))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(DPISettingsTokens.border, lineWidth: 1))
+                .onChange(of: model.text) { _ in
+                    proxy.scrollTo("log-end", anchor: .bottom)
+                }
+            }
+        }
+        .padding(.top, 28)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 18)
+        .frame(minWidth: 700, minHeight: 460)
+        .background(DPISettingsTokens.background)
+    }
+}
+
 final class LogWindowController: NSWindowController, NSWindowDelegate {
-    private var textView: NSTextView!
-    private var scrollView: NSScrollView!
-    private var liveBadge: NSView!
+    private let model = LogsViewModel()
+    private var hostingController: NSHostingController<LogsView>?
 
     convenience init() {
         let window = NSWindow(
@@ -259,111 +403,25 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
         )
         window.center()
         window.title = L10n.shared.logsTitle
-        AppTheme.styleUtilityWindow(window, minSize: NSSize(width: 620, height: 380))
+        AppTheme.styleUtilityWindow(window, minSize: NSSize(width: 700, height: 460))
         self.init(window: window)
         window.delegate = self
         setupUI()
     }
 
     override func showWindow(_ sender: Any?) {
-        beginObservingLogs()
+        model.begin()
         super.showWindow(sender)
-        updateLogs()
     }
 
     private func setupUI() {
-        let background = AppTheme.makeSettingsBackground()
-        window?.contentView = background
-
-        let contentStack = NSStackView()
-        contentStack.orientation = .vertical
-        contentStack.spacing = 14
-        contentStack.alignment = .leading
-        background.addSubview(contentStack)
-        contentStack.fill(parent: background, padding: 20)
-
-        let subtitle = AppTheme.makeSettingsSecondaryText(L10n.shared.logsDescription)
-        liveBadge = AppTheme.makeStatusBadge(text: L10n.shared.logsLiveStatus, color: AppTheme.accentSoft)
-        contentStack.addArrangedSubview(subtitle)
-        contentStack.addArrangedSubview(liveBadge)
-
-        scrollView = NSScrollView()
-        scrollView.drawsBackground = true
-        scrollView.backgroundColor = AppTheme.settingsSurface
-        scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = true
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.contentView.drawsBackground = false
-        AppTheme.styleSettingsSurface(scrollView)
-
-        textView = NSTextView()
-        textView.isEditable = false
-        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        textView.drawsBackground = false
-        textView.textColor = AppTheme.settingsTextPrimary
-        textView.insertionPointColor = AppTheme.settingsTextPrimary
-        textView.textContainerInset = NSSize(width: 10, height: 10)
-        scrollView.documentView = textView
-        contentStack.addArrangedSubview(scrollView)
-        scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
-
-        let actions = NSStackView()
-        actions.orientation = .horizontal
-        actions.spacing = 12
-        actions.alignment = .centerY
-
-        let clearBtn = NSButton(title: L10n.shared.clearLogs, target: self, action: #selector(clearLogs))
-        AppTheme.styleSecondaryButton(clearBtn)
-        let copyBtn = NSButton(title: L10n.shared.copyLogs, target: self, action: #selector(copyLogs))
-        AppTheme.stylePrimaryButton(copyBtn)
-        actions.addArrangedSubview(NSView())
-        actions.addArrangedSubview(clearBtn)
-        actions.addArrangedSubview(copyBtn)
-        contentStack.addArrangedSubview(actions)
-
-        NSLayoutConstraint.activate([
-            scrollView.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            actions.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
-        ])
-    }
-
-    private func beginObservingLogs() {
-        LogStore.shared.setProcessCaptureEnabled(true)
-        LogStore.shared.onUpdate = { [weak self] in
-            DispatchQueue.main.async {
-                self?.updateLogs()
-            }
-        }
-    }
-
-    private func endObservingLogs() {
-        LogStore.shared.setProcessCaptureEnabled(false)
-        LogStore.shared.onUpdate = nil
-    }
-
-    private func updateLogs() {
-        guard window?.isVisible == true else { return }
-        let text = LogStore.shared.getAllLogs()
-        let wasAtBottom = scrollView.verticalScroller?.floatValue ?? 1.0 > 0.95
-        textView.string = text
-        if wasAtBottom {
-            textView.scrollToEndOfDocument(nil)
-        }
-    }
-
-    @objc private func clearLogs() {
-        LogStore.shared.clear()
-    }
-
-    @objc private func copyLogs() {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(LogStore.shared.getAllLogs(), forType: .string)
+        let hostingController = NSHostingController(rootView: LogsView(model: model))
+        self.hostingController = hostingController
+        window?.contentViewController = hostingController
     }
 
     func windowWillClose(_ notification: Notification) {
-        endObservingLogs()
-        textView.string = ""
+        model.end()
         (NSApp.delegate as? AppDelegate)?.logWindow = nil
     }
 }
@@ -390,11 +448,41 @@ final class HelpWindowController: NSWindowController {
         let background = AppTheme.makeSettingsBackground()
         window?.contentView = background
 
+        let contentStack = NSStackView()
+        contentStack.orientation = .vertical
+        contentStack.spacing = 14
+        contentStack.alignment = .leading
+        background.addSubview(contentStack)
+        contentStack.fill(parent: background, padding: 18)
+
+        let header = NSStackView()
+        header.orientation = .vertical
+        header.spacing = 3
+        header.alignment = .leading
+
+        let title = AppTheme.makeSettingsTitle(L10n.shared.helpTitle)
+        title.font = .systemFont(ofSize: 18, weight: .semibold)
+        let subtitle = AppTheme.makeSettingsSecondaryText(L10n.shared.instructions)
+        header.addArrangedSubview(title)
+        header.addArrangedSubview(subtitle)
+        contentStack.addArrangedSubview(header)
+
+        let webContainer = NSView()
+        webContainer.translatesAutoresizingMaskIntoConstraints = false
+        AppTheme.styleSettingsSurface(webContainer)
+        contentStack.addArrangedSubview(webContainer)
+
         webView = WKWebView()
         webView.setValue(false, forKey: "drawsBackground")
         webView.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(webView)
-        webView.fill(parent: background, padding: 16)
+        webContainer.addSubview(webView)
+        webView.fill(parent: webContainer)
+
+        NSLayoutConstraint.activate([
+            header.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            webContainer.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+            webContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 440)
+        ])
     }
 
     func loadReadme() {
@@ -407,22 +495,25 @@ final class HelpWindowController: NSWindowController {
             return
         }
 
-        let html = markdownToHTML(content)
+        let html = markdownToHTML(cleanedHelpMarkdown(content))
         let styledHTML = """
         <html>
         <head>
         <style>
         :root { color-scheme: dark; }
-        html { background: #17191e; }
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; line-height: 1.65; padding: 24px 28px; color: #f0f0f0; background: #17191e; }
+        * { box-sizing: border-box; }
+        html { background: #25272f; }
+        body { max-width: 760px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; line-height: 1.58; padding: 22px 26px 34px; color: #f0f0f0; background: #25272f; }
         a { color: #6aa7ff; }
         h1, h2, h3 { color: #f0f0f0; }
-        h1 { font-size: 28px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; }
-        h2 { margin-top: 30px; }
-        pre { background: #2c2f37; padding: 14px; border-radius: 8px; overflow-x: auto; border: 1px solid rgba(255,255,255,0.08); }
-        code { background: #2c2f37; padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        h1 { font-size: 21px; margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        h2 { font-size: 16px; margin: 24px 0 8px; }
+        h3 { font-size: 14px; margin: 18px 0 6px; }
+        p { margin: 8px 0; }
+        pre { background: #2c2f37; padding: 12px; border-radius: 8px; overflow-x: auto; border: 1px solid rgba(255,255,255,0.08); }
+        code { background: #2c2f37; padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
         img { max-width: 100%; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); }
-        li { margin: 6px 0; }
+        li { margin: 5px 0 5px 18px; }
         hr { border: none; height: 1px; background: rgba(255,255,255,0.08); }
         </style>
         </head>
@@ -430,6 +521,14 @@ final class HelpWindowController: NSWindowController {
         </html>
         """
         webView.loadHTMLString(styledHTML, baseURL: Bundle.main.resourceURL)
+    }
+
+    private func cleanedHelpMarkdown(_ markdown: String) -> String {
+        markdown.replacingOccurrences(
+            of: "[✅❌⚠️🚀📊🔧🌐🔄🧪📋🎯💡🔥⭐️⭐]",
+            with: "",
+            options: .regularExpression
+        )
     }
 
     private func markdownToHTML(_ markdown: String) -> String {
@@ -498,7 +597,7 @@ final class LoadingWindowController: NSWindowController {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 196),
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 170),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -519,15 +618,21 @@ final class LoadingWindowController: NSWindowController {
 
         let contentStack = NSStackView()
         contentStack.orientation = .vertical
-        contentStack.spacing = 12
-        contentStack.alignment = .centerX
+        contentStack.spacing = 14
+        contentStack.alignment = .leading
         background.addSubview(contentStack)
-        contentStack.fill(parent: background, padding: 24)
+        contentStack.fill(parent: background, padding: 18)
+
+        let topRow = NSStackView()
+        topRow.orientation = .horizontal
+        topRow.spacing = 12
+        topRow.alignment = .centerY
+        topRow.translatesAutoresizingMaskIntoConstraints = false
 
         let iconContainer = NSView()
         iconContainer.translatesAutoresizingMaskIntoConstraints = false
-        iconContainer.widthAnchor.constraint(equalToConstant: 72).isActive = true
-        iconContainer.heightAnchor.constraint(equalToConstant: 72).isActive = true
+        iconContainer.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        iconContainer.heightAnchor.constraint(equalToConstant: 48).isActive = true
         if let icon = DPISettingsAssets.appIcon() {
             let imageView = NSImageView(image: icon)
             imageView.imageScaling = .scaleProportionallyUpOrDown
@@ -536,21 +641,29 @@ final class LoadingWindowController: NSWindowController {
             NSLayoutConstraint.activate([
                 imageView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
                 imageView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 56),
-                imageView.heightAnchor.constraint(equalToConstant: 56)
+                imageView.widthAnchor.constraint(equalToConstant: 42),
+                imageView.heightAnchor.constraint(equalToConstant: 42)
             ])
         }
 
         let title = NSTextField(labelWithString: "DPI Killer")
-        title.font = .systemFont(ofSize: 21, weight: .bold)
+        title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = AppTheme.settingsTextPrimary
-        title.alignment = .center
+        title.alignment = .left
 
         let subtitle = NSTextField(labelWithString: L10n.shared.preparingBypass)
         subtitle.font = .systemFont(ofSize: 13, weight: .regular)
         subtitle.textColor = AppTheme.settingsTextSecondary
-        subtitle.alignment = .center
+        subtitle.alignment = .left
+        subtitle.lineBreakMode = .byTruncatingTail
         sublabel = subtitle
+
+        let textStack = NSStackView()
+        textStack.orientation = .vertical
+        textStack.spacing = 3
+        textStack.alignment = .leading
+        textStack.addArrangedSubview(title)
+        textStack.addArrangedSubview(subtitle)
 
         progressView = LoaderProgressView()
         progressView?.translatesAutoresizingMaskIntoConstraints = false
@@ -562,20 +675,25 @@ final class LoadingWindowController: NSWindowController {
             cancelButton.isHidden = true
         }
 
-        contentStack.addArrangedSubview(iconContainer)
-        contentStack.addArrangedSubview(title)
-        contentStack.addArrangedSubview(subtitle)
+        topRow.addArrangedSubview(iconContainer)
+        topRow.addArrangedSubview(textStack)
+        contentStack.addArrangedSubview(topRow)
         if let progressView {
             contentStack.addArrangedSubview(progressView)
             NSLayoutConstraint.activate([
-                progressView.widthAnchor.constraint(equalToConstant: 220),
-                progressView.heightAnchor.constraint(equalToConstant: 10)
+                progressView.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+                progressView.heightAnchor.constraint(equalToConstant: 8)
             ])
         }
         if let cancelButton {
             contentStack.addArrangedSubview(cancelButton)
+            cancelButton.setContentHuggingPriority(.required, for: .horizontal)
             cancelButton.widthAnchor.constraint(equalToConstant: 110).isActive = true
         }
+
+        NSLayoutConstraint.activate([
+            topRow.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
+        ])
     }
 
     func updateStatus(_ text: String, showCancel: Bool = false) {
@@ -625,8 +743,6 @@ final class LoadingWindowController: NSWindowController {
 }
 
 final class LoaderBackgroundView: NSView {
-    private let gradientLayer = CAGradientLayer()
-
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         commonInit()
@@ -639,24 +755,11 @@ final class LoaderBackgroundView: NSView {
 
     private func commonInit() {
         wantsLayer = true
-        layer?.cornerRadius = 18
+        layer?.cornerRadius = 12
         layer?.masksToBounds = true
-        layer?.backgroundColor = AppTheme.settingsBackground.cgColor
-
-        gradientLayer.colors = [
-            AppTheme.settingsSurfaceRaised.blended(withFraction: 0.12, of: AppTheme.warning)?.cgColor ?? AppTheme.settingsSurfaceRaised.cgColor,
-            AppTheme.settingsSurface.blended(withFraction: 0.08, of: AppTheme.warning)?.cgColor ?? AppTheme.settingsSurface.cgColor,
-            AppTheme.settingsBackground.cgColor
-        ]
-        gradientLayer.startPoint = CGPoint(x: 0, y: 1)
-        gradientLayer.endPoint = CGPoint(x: 1, y: 0)
-
-        layer?.addSublayer(gradientLayer)
-    }
-
-    override func layout() {
-        super.layout()
-        gradientLayer.frame = bounds
+        layer?.backgroundColor = AppTheme.settingsSurface.cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = AppTheme.settingsBorder.cgColor
     }
 }
 
@@ -681,8 +784,8 @@ final class LoaderProgressView: NSView {
 
         trackLayer.backgroundColor = NSColor.white.withAlphaComponent(0.12).cgColor
         fillLayer.colors = [
-            AppTheme.warning.withAlphaComponent(0.96).cgColor,
-            NSColor.systemYellow.withAlphaComponent(0.92).cgColor
+            NSColor.controlAccentColor.withAlphaComponent(0.95).cgColor,
+            AppTheme.accentSoft.withAlphaComponent(0.88).cgColor
         ]
         fillLayer.startPoint = CGPoint(x: 0, y: 0.5)
         fillLayer.endPoint = CGPoint(x: 1, y: 0.5)

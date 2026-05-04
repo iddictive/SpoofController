@@ -153,6 +153,7 @@ struct L10n {
     var logsTitle: String { isRussian ? "Логи событий" : "Event Logs" }
     var logsDescription: String { isRussian ? "События текущего сеанса." : "Current session events." }
     var logsLiveStatus: String { isRussian ? "Запись активна" : "Live capture" }
+    var logsEmpty: String { isRussian ? "Пока нет событий." : "No events yet." }
     var clearLogs: String { isRussian ? "Очистить" : "Clear" }
     var copyLogs: String { isRussian ? "Копировать" : "Copy" }
     var helpUnavailable: String { isRussian ? "Инструкция недоступна." : "Manual is unavailable." }
