@@ -630,7 +630,7 @@ struct SettingsView: View {
     private var ciadpiMaintenanceCard: some View {
         SettingsCard(
             title: "ciadpi",
-            subtitle: text(ru: "Версия managed ciadpi и переустановка из upstream.", en: "Managed ciadpi version and upstream reinstall.")
+            subtitle: text(ru: "Версия managed ciadpi и действия обновления.", en: "Managed ciadpi version and update actions.")
         ) {
             SettingsRow(text(ru: "Выбран:", en: "Selected:")) {
                 pathText(viewModel.ciadpiSelectedPath)
@@ -646,6 +646,12 @@ struct SettingsView: View {
                     .foregroundStyle(DPISettingsTokens.secondaryText)
             }
 
+            SettingsRow(text(ru: "Последняя:", en: "Latest:")) {
+                Text(viewModel.ciadpiLatestVersion)
+                    .font(DPISettingsTokens.captionFont)
+                    .foregroundStyle(DPISettingsTokens.secondaryText)
+            }
+
             HStack(spacing: 10) {
                 Text(viewModel.ciadpiStatusMessage)
                     .font(DPISettingsTokens.captionFont)
@@ -654,11 +660,17 @@ struct SettingsView: View {
 
                 Spacer(minLength: 12)
 
+                Button(text(ru: "Проверить", en: "Check")) {
+                    viewModel.checkCiadpiVersion()
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.isCheckingCiadpi || viewModel.isUpdatingCiadpi)
+
                 Button(text(ru: "Обновить ciadpi", en: "Update ciadpi")) {
                     viewModel.updateCiadpi()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isUpdatingCiadpi)
+                .disabled(!viewModel.canUpdateCiadpi || viewModel.isCheckingCiadpi || viewModel.isUpdatingCiadpi)
             }
             .padding(.leading, DPISettingsTokens.rowLabelWidth + 12)
         }
@@ -857,11 +869,13 @@ final class SettingsViewModel: ObservableObject {
     @Published var ciadpiStatusStyle: SettingsBadgeStyle = .neutral
     @Published var isCheckingSpoofdpi = false
     @Published var isUpdatingSpoofdpi = false
+    @Published var isCheckingCiadpi = false
     @Published var isUpdatingCiadpi = false
     @Published var isActivatingSystemExtension = false
 
     @Published private var flagsByEngine: [BypassEngine: Set<String>]
     @Published private var spoofdpiStatus: SpoofdpiUpdateStatus?
+    @Published private var ciadpiStatus: CiadpiUpdateStatus?
     @Published private var vpnAvailabilityIssue: String?
     @Published private var tunnelActive: Bool
 
@@ -878,15 +892,18 @@ final class SettingsViewModel: ObservableObject {
 
     private let store: SettingsStore
     private let updater: SpoofdpiUpdater
+    private let ciadpiUpdater: CiadpiUpdater
 
     init(
         store: SettingsStore = .shared,
         updater: SpoofdpiUpdater = .shared,
+        ciadpiUpdater: CiadpiUpdater = .shared,
         tunnelManager: TunnelManager = .shared,
         systemExtensionManager: SystemExtensionManager = .shared
     ) {
         self.store = store
         self.updater = updater
+        self.ciadpiUpdater = ciadpiUpdater
 
         let draft = store.loadDraft()
         backendSelection = draft.backendSelection
@@ -912,7 +929,7 @@ final class SettingsViewModel: ObservableObject {
             .ciadpi: draft.ciadpi.selectedFlags,
             .spoofdpi: draft.spoofdpi.selectedFlags
         ]
-        spoofdpiStatusMessage = store.managedSpoofdpiPath.isEmpty ? L10n.shared.spoofdpiManagedMissing : L10n.shared.spoofdpiReady
+        spoofdpiStatusMessage = L10n.shared.isRussian ? "SpoofDPI установлен." : "SpoofDPI is installed."
         ciadpiStatusMessage = FileManager.default.isExecutableFile(atPath: store.managedCiadpiPath)
             ? (L10n.shared.isRussian ? "ciadpi установлен." : "ciadpi is installed.")
             : (L10n.shared.isRussian ? "Managed ciadpi не установлен." : "Managed ciadpi is not installed.")
@@ -929,6 +946,10 @@ final class SettingsViewModel: ObservableObject {
 
     var resolvedEngine: BypassEngine {
         store.currentEngine(for: resolvedBinaryPath)
+    }
+
+    private var ciadpiResolvedPath: String {
+        resolvedEngine == .ciadpi ? resolvedBinaryPath : store.resolvedBinaryPath(for: .ciadpi)
     }
 
     var dnsAvailable: Bool {
@@ -1010,8 +1031,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     var ciadpiSelectedPath: String {
-        let path = resolvedEngine == .ciadpi ? resolvedBinaryPath : store.resolvedBinaryPath(for: .ciadpi)
-        return compactPath(path)
+        compactPath(ciadpiResolvedPath)
     }
 
     var ciadpiManagedPath: String {
@@ -1019,7 +1039,15 @@ final class SettingsViewModel: ObservableObject {
     }
 
     var ciadpiManagedVersion: String {
-        ciadpiVersion(at: store.managedCiadpiPath) ?? L10n.shared.versionUnknown
+        ciadpiStatus?.managedVersion ?? L10n.shared.versionUnknown
+    }
+
+    var ciadpiLatestVersion: String {
+        ciadpiStatus?.latestVersion ?? L10n.shared.versionUnknown
+    }
+
+    var canUpdateCiadpi: Bool {
+        ciadpiStatus?.updateAvailable == true && ciadpiStatus?.sourceTarballURL != nil
     }
 
     var compatibilityBadges: [SettingsCompatibilityBadge] {
@@ -1185,18 +1213,44 @@ final class SettingsViewModel: ObservableObject {
             spoofdpiStatusMessage = L10n.shared.spoofdpiManagedMissing
             spoofdpiStatusStyle = .warning
         } else {
-            spoofdpiStatusMessage = L10n.shared.spoofdpiReady
+            spoofdpiStatusMessage = text(ru: "SpoofDPI установлен.", en: "SpoofDPI is installed.")
             spoofdpiStatusStyle = .neutral
         }
     }
 
     func refreshCiadpiLocalStatus() {
-        if FileManager.default.isExecutableFile(atPath: store.managedCiadpiPath) {
+        let status = ciadpiUpdater.localStatus(selectedPath: ciadpiResolvedPath)
+        ciadpiStatus = status
+        if status.managedVersion != nil {
             ciadpiStatusMessage = text(ru: "ciadpi установлен.", en: "ciadpi is installed.")
             ciadpiStatusStyle = .neutral
         } else {
             ciadpiStatusMessage = text(ru: "Managed ciadpi не установлен.", en: "Managed ciadpi is not installed.")
             ciadpiStatusStyle = .warning
+        }
+    }
+
+    func checkCiadpiVersion() {
+        isCheckingCiadpi = true
+        ciadpiStatusMessage = text(ru: "Проверка ciadpi...", en: "Checking ciadpi...")
+        ciadpiStatusStyle = .neutral
+        ciadpiUpdater.checkStatus(selectedPath: ciadpiResolvedPath) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isCheckingCiadpi = false
+                switch result {
+                case .success(let status):
+                    self.ciadpiStatus = status
+                    self.ciadpiStatusMessage = status.updateAvailable
+                        ? self.text(ru: "Доступно обновление ciadpi.", en: "ciadpi update is available.")
+                        : self.text(ru: "ciadpi актуален.", en: "ciadpi is up to date.")
+                    self.ciadpiStatusStyle = status.updateAvailable ? .warning : .success
+                case .failure(let error):
+                    self.ciadpiStatusMessage = self.text(ru: "Не удалось проверить ciadpi.", en: "Could not check ciadpi.")
+                    self.ciadpiStatusStyle = .warning
+                    AppLogger.log("ciadpi SwiftUI update check failed: \(error.localizedDescription)")
+                }
+            }
         }
     }
 
@@ -1248,18 +1302,20 @@ final class SettingsViewModel: ObservableObject {
         isUpdatingCiadpi = true
         ciadpiStatusMessage = text(ru: "Обновление ciadpi...", en: "Updating ciadpi...")
         ciadpiStatusStyle = .neutral
-        DPIKillerManager.shared.install { [weak self] success, error in
+        ciadpiUpdater.installLatest { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isUpdatingCiadpi = false
-                if success {
-                    self.refreshCiadpiLocalStatus()
-                    self.refreshSpoofdpiLocalStatus()
+                switch result {
+                case .success(let status):
+                    self.ciadpiStatus = status
                     self.ciadpiStatusMessage = self.text(ru: "ciadpi обновлён.", en: "ciadpi was updated.")
                     self.ciadpiStatusStyle = .success
-                } else {
-                    self.ciadpiStatusMessage = error ?? self.text(ru: "Не удалось обновить ciadpi.", en: "Could not update ciadpi.")
+                    SettingsStore.shared.saveDetectedBinaryPath(SettingsStore.shared.detectBestBinaryPath())
+                case .failure(let error):
+                    self.ciadpiStatusMessage = self.text(ru: "Не удалось обновить ciadpi.", en: "Could not update ciadpi.")
                     self.ciadpiStatusStyle = .warning
+                    AppLogger.log("ciadpi SwiftUI update failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -1468,29 +1524,6 @@ final class SettingsViewModel: ObservableObject {
             return major > 1 || (major == 1 && minor >= 4)
         } catch {
             return false
-        }
-    }
-
-    private func ciadpiVersion(at path: String) -> String? {
-        guard FileManager.default.isExecutableFile(atPath: path) else { return nil }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = ["--version"]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return output?.isEmpty == false ? output : nil
-        } catch {
-            return nil
         }
     }
 
