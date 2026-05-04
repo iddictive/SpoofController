@@ -2,7 +2,6 @@
 set -euo pipefail
 APP_NAME="DPIKiller"
 APP_BUNDLE="${APP_NAME}.app"
-VERSION_PREFIX="3.0"
 DERIVED_DATA_DIR=".xcodebuild"
 DERIVED_DATA_DIR="${DPIKILLER_DERIVED_DATA_DIR:-$DERIVED_DATA_DIR}"
 
@@ -12,55 +11,15 @@ detect_development_team() {
         | head -n 1
 }
 
-update_version_in_plist() {
-    local plist_path="$1"
-    local full_version="$2"
-    local build_num="$3"
-
-    if [ -f "$plist_path" ] && command -v plutil >/dev/null 2>&1; then
-        plutil -replace CFBundleShortVersionString -string "$full_version" "$plist_path" 2>/dev/null || true
-        plutil -replace CFBundleVersion -string "$build_num" "$plist_path" 2>/dev/null || true
+source scripts/version.sh
+if [ -z "${DPIKILLER_VERSION:-}" ]; then
+    if [ "${SKIP_VERSION_BUMP:-0}" = "1" ]; then
+        export DPIKILLER_BUMP_VERSION=0
+    else
+        export DPIKILLER_BUMP_VERSION=1
     fi
-}
-
-update_project_yml_versions() {
-    local full_version="$1"
-    local build_num="$2"
-
-    python3 - "$full_version" "$build_num" <<'PY'
-import pathlib
-import re
-import sys
-
-full_version = sys.argv[1]
-build_num = sys.argv[2]
-path = pathlib.Path("project.yml")
-text = path.read_text()
-text = re.sub(r'(?m)^(\s*MARKETING_VERSION:\s*).+$', rf'\g<1>{full_version}', text, count=1)
-text = re.sub(r'(?m)^(\s*CURRENT_PROJECT_VERSION:\s*).+$', rf'\g<1>{build_num}', text, count=1)
-path.write_text(text)
-PY
-}
-
-VERSION_FILE=".version"
-if [ ! -f "$VERSION_FILE" ]; then
-    echo "0" > "$VERSION_FILE"
 fi
-
-BUILD_NUM=$(cat "$VERSION_FILE")
-if [ "${SKIP_VERSION_BUMP:-0}" != "1" ]; then
-    BUILD_NUM=$((BUILD_NUM + 1))
-    echo "$BUILD_NUM" > "$VERSION_FILE"
-fi
-FULL_VERSION="${VERSION_PREFIX}.${BUILD_NUM}"
-
-# Sync version files for both the legacy bundle and the Xcode Packet Tunnel path.
-update_version_in_plist "Info.plist" "$FULL_VERSION" "$BUILD_NUM"
-update_version_in_plist "Xcode/DPIKiller-Info.plist" "$FULL_VERSION" "$BUILD_NUM"
-update_version_in_plist "Extensions/PacketTunnel/Info.plist" "$FULL_VERSION" "$BUILD_NUM"
-if [ -f "project.yml" ]; then
-    update_project_yml_versions "$FULL_VERSION" "$BUILD_NUM"
-fi
+FULL_VERSION="$(resolve_dpikiller_version "Info.plist")"
 
 rm -rf "${APP_BUNDLE}"
 rm -rf "${DERIVED_DATA_DIR}"

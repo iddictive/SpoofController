@@ -22,10 +22,22 @@ jobs:
       - name: Show Xcode Version
         run: xcodebuild -version
 
+      - name: Clean DerivedData
+        run: rm -rf ~/Library/Developer/Xcode/DerivedData
+
+      - name: Calculate Version
+        id: versioning
+        run: |
+          source scripts/version.sh
+          APP_VERSION="$(next_release_version Info.plist)"
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+          echo "VERSION=$APP_VERSION" >> $GITHUB_OUTPUT
+          DPIKILLER_VERSION="$APP_VERSION" resolve_dpikiller_version Info.plist
+
       - name: Build App
         id: build_app
         run: |
-          bash build.sh
+          DPIKILLER_VERSION="$APP_VERSION" SKIP_VERSION_BUMP=1 bash build.sh
 
           APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "DPIKiller.app/Contents/Info.plist")
           echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
@@ -35,19 +47,6 @@ jobs:
 
           # Re-sign after plist modification
           codesign --force --deep --sign - DPIKiller.app
-
-      - name: Sync Version Files Back To Main
-        run: |
-          if git diff --quiet -- .version Info.plist DPIKiller.app/Contents/Info.plist; then
-            echo "Version files already in sync."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .version Info.plist DPIKiller.app/Contents/Info.plist
-          git commit -m "chore: sync release version $APP_VERSION [skip ci]"
-          git push origin HEAD:main
 
       - name: Create DMG
         run: |
