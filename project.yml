@@ -53,6 +53,13 @@ targets:
       - sdk: SystemExtensions.framework
       - target: DPIKillerTunnel
         embed: true
+    postBuildScripts:
+      - name: Copy App Icon
+        script: |
+          mkdir -p "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          cp "$SRCROOT/assets/AppIcon.icns" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/AppIcon.icns"
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AppIcon.icns
 
   DPIKillerTunnel:
     type: app-extension

@@ -269,7 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let image = NSImage(size: size)
         image.lockFocus()
 
-        if let appIcon = NSApp.applicationIconImage {
+        if let appIcon = DPISettingsAssets.appIcon() {
             appIcon.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .sourceOver, fraction: 1)
         } else {
             NSColor.secondaryLabelColor.set()
@@ -340,9 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         completion: ((NSApplication.ModalResponse) -> Void)? = nil
     ) {
         NSApp.activate(ignoringOtherApps: true)
-        if alert.icon == nil {
-            alert.icon = DPISettingsAssets.appIcon()
-        }
+        alert.icon = DPISettingsAssets.appIcon()
         if let window = preferredWindow ?? alertParentWindow() {
             alert.beginSheetModal(for: window) { response in
                 completion?(response)
