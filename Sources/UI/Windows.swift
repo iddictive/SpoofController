@@ -597,7 +597,7 @@ final class LoadingWindowController: NSWindowController {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 170),
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 220),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -618,21 +618,15 @@ final class LoadingWindowController: NSWindowController {
 
         let contentStack = NSStackView()
         contentStack.orientation = .vertical
-        contentStack.spacing = 14
-        contentStack.alignment = .leading
+        contentStack.spacing = 12
+        contentStack.alignment = .centerX
         background.addSubview(contentStack)
-        contentStack.fill(parent: background, padding: 18)
-
-        let topRow = NSStackView()
-        topRow.orientation = .horizontal
-        topRow.spacing = 12
-        topRow.alignment = .centerY
-        topRow.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.fill(parent: background, padding: 24)
 
         let iconContainer = NSView()
         iconContainer.translatesAutoresizingMaskIntoConstraints = false
-        iconContainer.widthAnchor.constraint(equalToConstant: 48).isActive = true
-        iconContainer.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        iconContainer.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        iconContainer.heightAnchor.constraint(equalToConstant: 72).isActive = true
         if let icon = DPISettingsAssets.appIcon() {
             let imageView = NSImageView(image: icon)
             imageView.imageScaling = .scaleProportionallyUpOrDown
@@ -641,29 +635,23 @@ final class LoadingWindowController: NSWindowController {
             NSLayoutConstraint.activate([
                 imageView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
                 imageView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 42),
-                imageView.heightAnchor.constraint(equalToConstant: 42)
+                imageView.widthAnchor.constraint(equalToConstant: 58),
+                imageView.heightAnchor.constraint(equalToConstant: 58)
             ])
         }
 
         let title = NSTextField(labelWithString: "DPI Killer")
-        title.font = .systemFont(ofSize: 17, weight: .semibold)
+        title.font = .systemFont(ofSize: 21, weight: .bold)
         title.textColor = AppTheme.settingsTextPrimary
-        title.alignment = .left
+        title.alignment = .center
 
-        let subtitle = NSTextField(labelWithString: L10n.shared.preparingBypass)
+        let subtitle = NSTextField(wrappingLabelWithString: L10n.shared.preparingBypass)
         subtitle.font = .systemFont(ofSize: 13, weight: .regular)
         subtitle.textColor = AppTheme.settingsTextSecondary
-        subtitle.alignment = .left
+        subtitle.alignment = .center
         subtitle.lineBreakMode = .byTruncatingTail
+        subtitle.maximumNumberOfLines = 2
         sublabel = subtitle
-
-        let textStack = NSStackView()
-        textStack.orientation = .vertical
-        textStack.spacing = 3
-        textStack.alignment = .leading
-        textStack.addArrangedSubview(title)
-        textStack.addArrangedSubview(subtitle)
 
         progressView = LoaderProgressView()
         progressView?.translatesAutoresizingMaskIntoConstraints = false
@@ -675,13 +663,13 @@ final class LoadingWindowController: NSWindowController {
             cancelButton.isHidden = true
         }
 
-        topRow.addArrangedSubview(iconContainer)
-        topRow.addArrangedSubview(textStack)
-        contentStack.addArrangedSubview(topRow)
+        contentStack.addArrangedSubview(iconContainer)
+        contentStack.addArrangedSubview(title)
+        contentStack.addArrangedSubview(subtitle)
         if let progressView {
             contentStack.addArrangedSubview(progressView)
             NSLayoutConstraint.activate([
-                progressView.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+                progressView.widthAnchor.constraint(equalToConstant: 220),
                 progressView.heightAnchor.constraint(equalToConstant: 8)
             ])
         }
@@ -692,7 +680,7 @@ final class LoadingWindowController: NSWindowController {
         }
 
         NSLayoutConstraint.activate([
-            topRow.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
+            subtitle.widthAnchor.constraint(equalTo: contentStack.widthAnchor)
         ])
     }
 
@@ -755,9 +743,9 @@ final class LoaderBackgroundView: NSView {
 
     private func commonInit() {
         wantsLayer = true
-        layer?.cornerRadius = 12
+        layer?.cornerRadius = 18
         layer?.masksToBounds = true
-        layer?.backgroundColor = AppTheme.settingsSurface.cgColor
+        layer?.backgroundColor = AppTheme.settingsSurfaceRaised.cgColor
         layer?.borderWidth = 1
         layer?.borderColor = AppTheme.settingsBorder.cgColor
     }
