@@ -72,8 +72,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showStartupFailureAlert(error: String?) {
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = L10n.shared.failedToStart
-        alert.informativeText = error ?? (L10n.shared.isRussian ? "Проверьте настройки." : "Check settings.")
+        alert.informativeText = userFacingStartupMessage(error)
 
         NSApp.activate(ignoringOtherApps: true)
         if settingsWindow == nil {
@@ -81,11 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         showSettings()
 
-        guard let window = settingsWindow?.window else {
-            alert.runModal()
-            return
-        }
-        alert.beginSheetModal(for: window)
+        presentAlert(alert, attachedTo: settingsWindow?.window)
     }
 
     func refreshUI() {
@@ -124,10 +121,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             startSelectedMode { [weak self] success, error in
                 if !success {
                     let alert = NSAlert()
+                    alert.alertStyle = .warning
                     alert.messageText = L10n.shared.failedToStart
-                    alert.informativeText = error ?? "Check settings."
+                    alert.informativeText = self?.userFacingStartupMessage(error) ?? L10n.shared.startupFailureInfo
                     NSApp.activate(ignoringOtherApps: true)
-                    alert.runModal()
+                    self?.presentAlert(alert)
                 }
                 self?.refreshUI()
             }
@@ -179,10 +177,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.loadingWindow?.closeWithFade {
                     self?.loadingWindow = nil
                     let alert = NSAlert()
+                    alert.alertStyle = success ? .informational : .warning
                     alert.messageText = success ? L10n.shared.diagSuccess : L10n.shared.diagFailed
-                    alert.informativeText = error ?? ""
+                    alert.informativeText = self?.userFacingDiagnosticsMessage(success: success, error: error) ?? ""
                     NSApp.activate(ignoringOtherApps: true)
-                    alert.runModal()
+                    self?.presentAlert(alert)
                 }
             }
         }
@@ -194,24 +193,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showInstallAlert() {
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = L10n.shared.dependencyMissing
         alert.informativeText = L10n.shared.spoofDpiNeeded
         alert.addButton(withTitle: L10n.shared.install)
         alert.addButton(withTitle: L10n.shared.quit)
 
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = loadingWindow?.window ?? settingsWindow?.window {
-            alert.beginSheetModal(for: window) { response in
-                if response == .alertFirstButtonReturn {
-                    self.performInstallation()
-                } else {
-                    NSApp.terminate(nil)
-                }
+        presentAlert(alert, attachedTo: loadingWindow?.window ?? settingsWindow?.window) { response in
+            if response == .alertFirstButtonReturn {
+                self.performInstallation()
+            } else {
+                NSApp.terminate(nil)
             }
-        } else if alert.runModal() == .alertFirstButtonReturn {
-            performInstallation()
-        } else {
-            NSApp.terminate(nil)
         }
     }
 
@@ -244,13 +237,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.loadingWindow?.closeWithFade {
                     self?.loadingWindow = nil
                     self?.refreshUI()
-                    if let error {
-                        let fail = NSAlert()
-                        fail.messageText = L10n.shared.installFailed
-                        fail.informativeText = error
-                        NSApp.activate(ignoringOtherApps: true)
-                        fail.runModal()
-                    }
+                    let fail = NSAlert()
+                    fail.alertStyle = .critical
+                    fail.messageText = L10n.shared.installFailed
+                    fail.informativeText = error ?? L10n.shared.installFailedInfo
+                    self?.presentAlert(fail)
                 }
             }
         }
@@ -280,24 +271,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupMenu() {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let runtimeStatus = currentRuntimeStatus()
-        let status = statusTitle(for: runtimeStatus)
-        menu.addItem(NSMenuItem(title: status, action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "\(L10n.shared.runtimeModeTitle) \(runtimeModeTitle())", action: nil, keyEquivalent: ""))
+        menu.addItem(disabledMenuItem(title: L10n.shared.menuRuntimeSection))
+        menu.addItem(disabledMenuItem(title: statusTitle(for: runtimeStatus)))
+        menu.addItem(disabledMenuItem(title: "\(L10n.shared.runtimeModeTitle) \(runtimeModeTitle())"))
+        menu.addItem(disabledMenuItem(title: "\(L10n.shared.backendRuntimeTitle) \(backendRuntimeTitle())"))
         if runtimeStatus != .stopped {
-            menu.addItem(NSMenuItem(title: networkOptimizationTitle(for: runtimeStatus), action: nil, keyEquivalent: ""))
+            menu.addItem(disabledMenuItem(title: networkOptimizationTitle(for: runtimeStatus)))
         }
+
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: isModeRunning() ? L10n.shared.stop : L10n.shared.start, action: #selector(toggle), keyEquivalent: "t"))
-        menu.addItem(NSMenuItem(title: L10n.shared.diagTitle, action: #selector(runDiagnostics), keyEquivalent: "d"))
-        menu.addItem(NSMenuItem(title: L10n.shared.speedTest, action: #selector(showSpeedTest), keyEquivalent: "s"))
-        menu.addItem(NSMenuItem(title: L10n.shared.logsTitle, action: #selector(showLogs), keyEquivalent: "l"))
-        menu.addItem(NSMenuItem(title: L10n.shared.settings, action: #selector(showSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: L10n.shared.updateCheck, action: #selector(checkUpdate), keyEquivalent: "u"))
-        menu.addItem(NSMenuItem(title: L10n.shared.instructions, action: #selector(showHelp), keyEquivalent: "h"))
+        menu.addItem(actionMenuItem(title: isModeRunning() ? L10n.shared.stop : L10n.shared.start, action: #selector(toggle), key: "t"))
+
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: L10n.shared.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(disabledMenuItem(title: L10n.shared.menuToolsSection))
+        menu.addItem(actionMenuItem(title: L10n.shared.settings, action: #selector(showSettings), key: ","))
+        menu.addItem(actionMenuItem(title: L10n.shared.diagTitle, action: #selector(runDiagnostics), key: "d"))
+        menu.addItem(actionMenuItem(title: L10n.shared.speedTest, action: #selector(showSpeedTest), key: "s"))
+        menu.addItem(actionMenuItem(title: L10n.shared.logsTitle, action: #selector(showLogs), key: "l"))
+
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(disabledMenuItem(title: L10n.shared.menuUpdateSection))
+        menu.addItem(actionMenuItem(title: L10n.shared.updateCheck, action: #selector(checkUpdate), key: "u"))
+        menu.addItem(actionMenuItem(title: L10n.shared.instructions, action: #selector(showHelp), key: "h"))
+
+        menu.addItem(NSMenuItem.separator())
+        let quitItem = NSMenuItem(title: L10n.shared.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = NSApp
+        quitItem.isEnabled = true
+        menu.addItem(quitItem)
         statusItem?.menu = menu
+    }
+
+    private func disabledMenuItem(title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    private func actionMenuItem(title: String, action: Selector, key: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.target = self
+        item.isEnabled = true
+        return item
+    }
+
+    private func presentAlert(
+        _ alert: NSAlert,
+        attachedTo preferredWindow: NSWindow? = nil,
+        completion: ((NSApplication.ModalResponse) -> Void)? = nil
+    ) {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = preferredWindow ?? alertParentWindow() {
+            alert.beginSheetModal(for: window) { response in
+                completion?(response)
+            }
+        } else {
+            let response = alert.runModal()
+            completion?(response)
+        }
     }
 
     private func setupSignalHandlers() {
@@ -428,6 +461,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         return L10n.shared.runtimeModeProxy
+    }
+
+    private func backendRuntimeTitle() -> String {
+        SettingsStore.shared.resolvedEngine.displayName
+    }
+
+    private func alertParentWindow() -> NSWindow? {
+        if let keyWindow = NSApp.keyWindow {
+            return keyWindow
+        }
+        if let window = settingsWindow?.window {
+            return window
+        }
+        if let window = loadingWindow?.window {
+            return window
+        }
+        if let window = speedTestWindow?.window {
+            return window
+        }
+        if let window = logWindow?.window {
+            return window
+        }
+        return helpWindow?.window
+    }
+
+    private func userFacingStartupMessage(_ error: String?) -> String {
+        guard let error,
+              !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return L10n.shared.startupFailureInfo
+        }
+        return error
+    }
+
+    private func userFacingDiagnosticsMessage(success: Bool, error: String?) -> String {
+        if success {
+            return L10n.shared.diagSuccessInfo
+        }
+        guard let error,
+              !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return L10n.shared.diagFailedInfo
+        }
+        if error.hasPrefix("Status code:") || error == "Unknown response" {
+            return L10n.shared.diagFailedInfo
+        }
+        return error
     }
 
     private func statusColor(for status: RuntimeStatus) -> NSColor {

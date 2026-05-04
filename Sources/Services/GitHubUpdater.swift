@@ -24,10 +24,7 @@ final class GitHubUpdater {
             guard let data = data, error == nil else {
                 if manual {
                     DispatchQueue.main.async {
-                        let alert = NSAlert()
-                        alert.messageText = L10n.shared.updateFailed
-                        alert.informativeText = error?.localizedDescription ?? "Network error."
-                        alert.runModal()
+                        self?.showUpdateFailureAlert(informativeText: L10n.shared.updateCheckFailedInfo)
                     }
                 }
                 return
@@ -55,13 +52,24 @@ final class GitHubUpdater {
                     } else if manual {
                         DispatchQueue.main.async {
                             let alert = NSAlert()
+                            alert.alertStyle = .informational
                             alert.messageText = L10n.shared.updateLatest
-                            alert.runModal()
+                            alert.informativeText = L10n.shared.updateLatestInfo
+                            self?.presentAlert(alert)
                         }
+                    }
+                } else if manual {
+                    DispatchQueue.main.async {
+                        self?.showUpdateFailureAlert(informativeText: L10n.shared.updateCheckFailedInfo)
                     }
                 }
             } catch {
                 AppLogger.log("Update check error: \(error)")
+                if manual {
+                    DispatchQueue.main.async {
+                        self?.showUpdateFailureAlert(informativeText: L10n.shared.updateCheckFailedInfo)
+                    }
+                }
             }
         }.resume()
     }
@@ -72,27 +80,24 @@ final class GitHubUpdater {
 
     private func showUpdateAlert(version: String, downloadUrl: String?) {
         let alert = NSAlert()
+        alert.alertStyle = .informational
         alert.messageText = L10n.shared.updateAvailable
         alert.informativeText = String(format: L10n.shared.updateFound, version)
-        alert.addButton(withTitle: L10n.shared.updateDownload)
-        alert.addButton(withTitle: L10n.shared.updateLater)
 
-        NSApp.activate(ignoringOtherApps: true)
-        let appDelegate = NSApp.delegate as? AppDelegate
-        let parentWindow = appDelegate?.loadingWindow?.window ?? appDelegate?.settingsWindow?.window
+        if downloadUrl == nil {
+            alert.informativeText = L10n.shared.updateNoDownloadInfo
+            alert.addButton(withTitle: L10n.shared.ok)
+        } else {
+            alert.addButton(withTitle: L10n.shared.updateDownload)
+            alert.addButton(withTitle: L10n.shared.updateLater)
+        }
 
-        if let window = parentWindow {
-            alert.beginSheetModal(for: window) { response in
-                if response == .alertFirstButtonReturn,
-                   let urlString = downloadUrl,
-                   let url = URL(string: urlString) {
-                    self.startAutomatedUpdate(url: url)
-                }
+        presentAlert(alert) { response in
+            if response == .alertFirstButtonReturn,
+               let urlString = downloadUrl,
+               let url = URL(string: urlString) {
+                self.startAutomatedUpdate(url: url)
             }
-        } else if alert.runModal() == .alertFirstButtonReturn,
-                  let urlString = downloadUrl,
-                  let url = URL(string: urlString) {
-            startAutomatedUpdate(url: url)
         }
     }
 
@@ -115,12 +120,9 @@ final class GitHubUpdater {
                     try? FileManager.default.copyItem(at: localURL, to: URL(fileURLWithPath: tempPath))
                     self?.performInstallation(dmgPath: tempPath)
                 } else {
-                    let fail = NSAlert()
-                    fail.messageText = L10n.shared.updateFailed
-                    fail.informativeText = error?.localizedDescription ?? "Download failed."
-                    fail.runModal()
                     (NSApp.delegate as? AppDelegate)?.loadingWindow?.closeWithFade {
                         (NSApp.delegate as? AppDelegate)?.loadingWindow = nil
+                        self?.showUpdateFailureAlert(informativeText: L10n.shared.updateDownloadFailedInfo)
                     }
                 }
             }
@@ -160,16 +162,57 @@ final class GitHubUpdater {
                 if process.terminationStatus == 0 {
                     self?.relaunch()
                 } else {
-                    let fail = NSAlert()
-                    fail.messageText = L10n.shared.updateFailed
-                    fail.informativeText = "Could not copy the new version to /Applications."
-                    fail.runModal()
                     (NSApp.delegate as? AppDelegate)?.loadingWindow?.closeWithFade {
                         (NSApp.delegate as? AppDelegate)?.loadingWindow = nil
+                        self?.showUpdateFailureAlert(informativeText: L10n.shared.updateInstallFailedInfo)
                     }
                 }
             }
         }
+    }
+
+    private func showUpdateFailureAlert(informativeText: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.shared.updateFailed
+        alert.informativeText = informativeText
+        presentAlert(alert)
+    }
+
+    private func presentAlert(
+        _ alert: NSAlert,
+        completion: ((NSApplication.ModalResponse) -> Void)? = nil
+    ) {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = alertParentWindow() {
+            alert.beginSheetModal(for: window) { response in
+                completion?(response)
+            }
+        } else {
+            let response = alert.runModal()
+            completion?(response)
+        }
+    }
+
+    private func alertParentWindow() -> NSWindow? {
+        if let keyWindow = NSApp.keyWindow {
+            return keyWindow
+        }
+
+        let appDelegate = NSApp.delegate as? AppDelegate
+        if let window = appDelegate?.loadingWindow?.window {
+            return window
+        }
+        if let window = appDelegate?.settingsWindow?.window {
+            return window
+        }
+        if let window = appDelegate?.speedTestWindow?.window {
+            return window
+        }
+        if let window = appDelegate?.logWindow?.window {
+            return window
+        }
+        return appDelegate?.helpWindow?.window
     }
 
     private func relaunch() {

@@ -9,11 +9,15 @@ struct L10n {
         self.isRussian = lang.hasPrefix("ru")
     }
 
-    var statusActive: String { isRussian ? "Статус: АКТИВЕН ✅" : "Status: ACTIVE ✅" }
-    var statusPartial: String { isRussian ? "Статус: ТРЕБУЕТ ОПТИМИЗАЦИИ ⚠️" : "Status: NEEDS OPTIMIZATION ⚠️" }
-    var statusStopped: String { isRussian ? "Статус: ОСТАНОВЛЕН ❌" : "Status: STOPPED ❌" }
-    var networkOptimizationActive: String { isRussian ? "Оптимизация сети: применена ✅" : "Network Optimization: Applied ✅" }
-    var networkOptimizationInactive: String { isRussian ? "Оптимизация сети: не применена ⚠️" : "Network Optimization: Not Applied ⚠️" }
+    var statusActive: String { isRussian ? "Статус: активно" : "Status: Active" }
+    var statusPartial: String { isRussian ? "Статус: требует внимания" : "Status: Needs attention" }
+    var statusStopped: String { isRussian ? "Статус: остановлено" : "Status: Stopped" }
+    var networkOptimizationActive: String { isRussian ? "Сеть: оптимизирована" : "Network: Optimized" }
+    var networkOptimizationInactive: String { isRussian ? "Сеть: нужна оптимизация" : "Network: Needs optimization" }
+    var menuRuntimeSection: String { isRussian ? "Состояние" : "Runtime" }
+    var menuToolsSection: String { isRussian ? "Инструменты" : "Tools" }
+    var menuUpdateSection: String { isRussian ? "Обслуживание" : "Maintenance" }
+    var backendRuntimeTitle: String { isRussian ? "Backend:" : "Backend:" }
     var start: String { isRussian ? "Запустить" : "Start" }
     var stop: String { isRussian ? "Остановить" : "Stop" }
     var settings: String { isRussian ? "Настройки..." : "Settings..." }
@@ -57,10 +61,10 @@ struct L10n {
     var portTitle: String { isRussian ? "Локальный порт:" : "Local Port:" }
     var portPlaceholder: String { isRussian ? "По умолч: 8080" : "Default: 8080" }
     var hotspotStatusTitle: String { isRussian ? "Состояние хотспота:" : "Hotspot Status:" }
-    var hotspotStatusOptimized: String { isRussian ? "Оптимизировано ✅" : "Optimized ✅" }
-    var hotspotStatusThrottled: String { isRussian ? "Ограничено провайдером ⚠️" : "Throttled by ISP ⚠️" }
+    var hotspotStatusOptimized: String { isRussian ? "Оптимизировано" : "Optimized" }
+    var hotspotStatusThrottled: String { isRussian ? "Ограничено провайдером" : "Throttled by ISP" }
     var fixHotspotButton: String { isRussian ? "Снять ограничения (Sudo)" : "Remove Limits (Sudo)" }
-    var fixHotspotSuccess: String { isRussian ? "Настройки TTL успешно применены! 🚀" : "TTL settings applied successfully! 🚀" }
+    var fixHotspotSuccess: String { isRussian ? "Настройки TTL применены" : "TTL settings applied" }
     var fixHotspotFailed: String { isRussian ? "Не удалось применить настройки." : "Failed to apply settings." }
 
     var dnsTitle: String { isRussian ? "Настройки DNS:" : "DNS Settings:" }
@@ -75,31 +79,39 @@ struct L10n {
     var descDebug: String { isRussian ? "Режим отладки (info/debug)" : "Debug mode (info/debug)" }
     var descPolicyAuto: String { isRussian ? "Адаптивный обход для ciadpi" : "Adaptive bypass for ciadpi" }
 
-    var dependencyMissing: String { isRussian ? "Отсутствует зависимость" : "Dependency Missing" }
-    var spoofDpiNeeded: String { isRussian ? "Не найдены backend-движки. Установить поддерживаемые движки для macOS?" : "No DPI backends were found. Install the supported macOS backends?" }
+    var dependencyMissing: String { isRussian ? "Нужен backend" : "Backend required" }
+    var spoofDpiNeeded: String { isRussian ? "DPI Killer нужен локальный движок обхода. Установить поддерживаемые backend-движки для macOS?" : "DPI Killer needs a local bypass backend. Install the supported macOS backends?" }
     var install: String { isRussian ? "Установить" : "Install" }
-    var installing: String { isRussian ? "Установка движков..." : "Installing backends..." }
+    var ok: String { isRussian ? "OK" : "OK" }
+    var installing: String { isRussian ? "Установка backend-движков..." : "Installing backends..." }
     var pleaseWaitBrew: String { isRussian ? "Пожалуйста, подождите. Сборка ciadpi или fallback-установка могут занять минуту." : "Please wait while ciadpi is built or the fallback backend is installed. This might take a minute." }
-    var installComplete: String { isRussian ? "Движки установлены" : "Backends Installed" }
+    var installComplete: String { isRussian ? "Backend-движки установлены" : "Backends installed" }
     var installSuccess: String { isRussian ? "Поддерживаемые движки установлены. Запуск сервиса..." : "Supported backends were installed. Starting service..." }
-    var installFailed: String { isRussian ? "Ошибка установки" : "Installation Failed" }
+    var installFailed: String { isRussian ? "Не удалось установить backend" : "Could not install backend" }
+    var installFailedInfo: String { isRussian ? "Проверьте подключение к сети и повторите установку." : "Check your connection and try again." }
     var installManual: String { isRussian ? "Неизвестная ошибка. Установите ciadpi вручную и скачайте SpoofDPI из официального GitHub release." : "Unknown error. Please install ciadpi manually and download SpoofDPI from the official GitHub release." }
-    var backendStartTimeout: String { isRussian ? "Backend не поднял локальный прокси вовремя." : "The backend did not start the local proxy in time." }
-    var backendExitedEarly: String { isRussian ? "Backend завершился до готовности." : "The backend exited before becoming ready." }
-    var failedToStart: String { isRussian ? "Не удалось запустить" : "Failed to start" }
-    var preparingBypass: String { isRussian ? "Подготовка обхода... ⚡️" : "Preparing your bypass... ⚡️" }
+    var backendStartTimeout: String { isRussian ? "Backend не запустил локальный proxy вовремя." : "The backend did not start the local proxy in time." }
+    var backendExitedEarly: String { isRussian ? "Backend остановился до готовности." : "The backend stopped before it was ready." }
+    var failedToStart: String { isRussian ? "DPI Killer не запустился" : "DPI Killer could not start" }
+    var startupFailureInfo: String { isRussian ? "Откройте настройки и проверьте backend и параметры сети." : "Open Settings and review the backend and network options." }
+    var preparingBypass: String { isRussian ? "Подготовка обхода..." : "Preparing bypass..." }
     var cancel: String { isRussian ? "Отмена" : "Cancel" }
 
     var updateCheck: String { isRussian ? "Проверить обновления..." : "Check for Updates..." }
     var updateChecking: String { isRussian ? "Проверка обновлений..." : "Checking for updates..." }
-    var updateAvailable: String { isRussian ? "Доступно обновление" : "Update Available" }
-    var updateLatest: String { isRussian ? "У вас установлена последняя версия." : "You are on the latest version." }
-    var updateFound: String { isRussian ? "Доступна новая версия %@. Хотите обновиться?" : "A new version %@ is available. Would you like to update?" }
+    var updateAvailable: String { isRussian ? "Доступно обновление" : "Update available" }
+    var updateLatest: String { isRussian ? "DPI Killer обновлен" : "DPI Killer is up to date" }
+    var updateLatestInfo: String { isRussian ? "Установлена последняя доступная версия." : "You have the latest available version." }
+    var updateFound: String { isRussian ? "Версия %@ готова к установке." : "Version %@ is ready to install." }
     var updateDownload: String { isRussian ? "Скачать и установить" : "Download & Install" }
     var updateLater: String { isRussian ? "Позже" : "Later" }
     var updateDownloading: String { isRussian ? "Загрузка обновления..." : "Downloading update..." }
     var updateInstalling: String { isRussian ? "Установка обновления..." : "Installing update..." }
-    var updateFailed: String { isRussian ? "Ошибка обновления" : "Update Failed" }
+    var updateFailed: String { isRussian ? "Обновление не удалось" : "Update could not continue" }
+    var updateCheckFailedInfo: String { isRussian ? "Не удалось получить информацию о последней версии. Проверьте подключение и повторите попытку." : "DPI Killer could not get the latest version. Check your connection and try again." }
+    var updateDownloadFailedInfo: String { isRussian ? "Не удалось загрузить обновление. Проверьте подключение и повторите попытку." : "DPI Killer could not download the update. Check your connection and try again." }
+    var updateInstallFailedInfo: String { isRussian ? "Не удалось заменить приложение в Applications. Закройте DPI Killer и повторите установку." : "DPI Killer could not replace the app in Applications. Quit DPI Killer and try again." }
+    var updateNoDownloadInfo: String { isRussian ? "В релизе не найден установочный файл для macOS." : "The release does not include a macOS installer." }
     var autoUpdateTitle: String { isRussian ? "Обновления:" : "Updates:" }
     var autoUpdateToggle: String { isRussian ? "Автоматически проверять обновления" : "Automatically check for updates" }
     var autoDownloadToggle: String { isRussian ? "Автоматически скачивать обновления" : "Automatically download updates" }
@@ -141,8 +153,10 @@ struct L10n {
 
     var diagTitle: String { isRussian ? "Диагностика связи" : "Connectivity Diagnostics" }
     var diagChecking: String { isRussian ? "Проверка..." : "Checking..." }
-    var diagSuccess: String { isRussian ? "Обход работает! ✅" : "Bypass is working! ✅" }
-    var diagFailed: String { isRussian ? "Обход не работает ❌" : "Bypass is failing ❌" }
+    var diagSuccess: String { isRussian ? "Обход работает" : "Bypass is working" }
+    var diagSuccessInfo: String { isRussian ? "Трафик проходит через локальный backend." : "Traffic is passing through the local backend." }
+    var diagFailed: String { isRussian ? "Обход не работает" : "Bypass is not working" }
+    var diagFailedInfo: String { isRussian ? "Проверьте состояние запуска, backend и подключение к сети." : "Check runtime status, backend settings, and network connection." }
     var diagNoProxy: String { isRussian ? "Прокси не запущен" : "Proxy is not running" }
 
     var disableIpv6: String { isRussian ? "Отключить IPv6 (рекомендуется)" : "Disable IPv6 (recommended)" }
