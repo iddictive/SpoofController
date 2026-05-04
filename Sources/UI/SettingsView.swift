@@ -5,10 +5,12 @@ enum DPISettingsTokens {
     static let sidebarWidth: CGFloat = 176
     static let footerHeight: CGFloat = 58
     static let contentPadding: CGFloat = 18
+    static let shellPadding: CGFloat = 10
     static let cardPadding: CGFloat = 14
     static let rowLabelWidth: CGFloat = 132
     static let controlHeight: CGFloat = 28
     static let cornerRadius: CGFloat = 8
+    static let sidebarCornerRadius: CGFloat = 12
     static let rowSpacing: CGFloat = 12
     static let cardSpacing: CGFloat = 14
 
@@ -131,7 +133,14 @@ struct SettingsSidebar: View {
         }
         .padding(12)
         .frame(width: DPISettingsTokens.sidebarWidth)
-        .background(DPISettingsTokens.sidebar)
+        .background(
+            RoundedRectangle(cornerRadius: DPISettingsTokens.sidebarCornerRadius)
+                .fill(DPISettingsTokens.sidebar)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DPISettingsTokens.sidebarCornerRadius)
+                .stroke(DPISettingsTokens.border, lineWidth: 1)
+        )
     }
 }
 
@@ -288,12 +297,8 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
+            HStack(spacing: DPISettingsTokens.shellPadding) {
                 SettingsSidebar(selectedTab: $viewModel.selectedTab)
-
-                Rectangle()
-                    .fill(DPISettingsTokens.separator)
-                    .frame(width: 1)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: DPISettingsTokens.cardSpacing) {
@@ -304,6 +309,7 @@ struct SettingsView: View {
                 }
                 .background(DPISettingsTokens.background)
             }
+            .padding(DPISettingsTokens.shellPadding)
 
             Rectangle()
                 .fill(DPISettingsTokens.separator)
