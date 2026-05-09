@@ -1,4 +1,5 @@
 import Cocoa
+import Darwin
 import Foundation
 import Network
 
@@ -561,31 +562,26 @@ final class DPIKillerManager {
     }
 
     private func isLocalPortAvailable(port: Int) -> Bool {
-        guard let endpointPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return false }
-        let semaphore = DispatchSemaphore(value: 0)
-        let queue = DispatchQueue(label: "com.iddictive.dpikiller.port-check")
-        var available = false
+        guard let rawPort = UInt16(exactly: port) else { return false }
+        let socketFileDescriptor = socket(AF_INET, SOCK_STREAM, 0)
+        guard socketFileDescriptor >= 0 else { return false }
+        defer { close(socketFileDescriptor) }
 
-        do {
-            let listener = try NWListener(using: .tcp, on: endpointPort)
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    available = true
-                    semaphore.signal()
-                case .failed(_), .cancelled:
-                    semaphore.signal()
-                default:
-                    break
-                }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = rawPort.bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        let result = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                bind(socketFileDescriptor, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
-            listener.start(queue: queue)
-            _ = semaphore.wait(timeout: .now() + 1.0)
-            listener.cancel()
-        } catch {
-            return false
         }
 
-        return available
+        if result != 0 {
+            return false
+        }
+        return true
     }
 }
