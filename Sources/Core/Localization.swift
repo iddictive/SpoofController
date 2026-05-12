@@ -182,6 +182,11 @@ struct L10n {
     var vpnClientCompatibility: String { isRussian ? "Совместимость с VPN-клиентами" : "VPN client compatibility" }
     var tipVPNClientCompatibility: String { isRussian ? "Для Shadowrocket и похожих клиентов: DPI Killer оставит только локальный proxy." : "For Shadowrocket and similar clients: DPI Killer will expose only the local proxy." }
     var vpnClientCompatibilityStatus: String { isRussian ? "VPN-клиент может использовать 127.0.0.1:%d как upstream." : "VPN client can use 127.0.0.1:%d as upstream." }
+    var configureShadowrocket: String { isRussian ? "Настроить Shadowrocket" : "Configure Shadowrocket" }
+    var configuringShadowrocket: String { isRussian ? "Настройка Shadowrocket..." : "Configuring Shadowrocket..." }
+    var shadowrocketNeedsCiadpi: String { isRussian ? "Для быстрой настройки Shadowrocket нужен ciadpi." : "Quick Shadowrocket setup requires ciadpi." }
+    var shadowrocketOpenFailed: String { isRussian ? "Не удалось открыть Shadowrocket." : "Could not open Shadowrocket." }
+    var shadowrocketOpened: String { isRussian ? "Shadowrocket открыт для импорта proxy." : "Shadowrocket opened for proxy import." }
 
     var sectionCore: String { isRussian ? "Core" : "Core" }
     var sectionBackend: String { isRussian ? "Движок" : "Backend" }

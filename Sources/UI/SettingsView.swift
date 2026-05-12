@@ -619,6 +619,13 @@ struct SettingsView: View {
                     .padding(.leading, DPISettingsTokens.rowLabelWidth + 12)
             }
 
+            Button(viewModel.isConfiguringShadowrocket ? L10n.shared.configuringShadowrocket : L10n.shared.configureShadowrocket) {
+                viewModel.configureShadowrocket()
+            }
+            .buttonStyle(.bordered)
+            .disabled(viewModel.isConfiguringShadowrocket || viewModel.isApplyingNetworkOptimization)
+            .padding(.leading, DPISettingsTokens.rowLabelWidth + 12)
+
             Toggle(isOn: $viewModel.vpnModeEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L10n.shared.vpnModeToggle)
@@ -894,6 +901,7 @@ final class SettingsViewModel: ObservableObject {
     @Published var isUpdatingCiadpi = false
     @Published var isActivatingSystemExtension = false
     @Published var isApplyingNetworkOptimization = false
+    @Published var isConfiguringShadowrocket = false
 
     @Published private var flagsByEngine: [BypassEngine: Set<String>]
     @Published private var spoofdpiStatus: SpoofdpiUpdateStatus?
@@ -1280,6 +1288,59 @@ final class SettingsViewModel: ObservableObject {
         }
     }
 
+    func configureShadowrocket() {
+        guard !isConfiguringShadowrocket else { return }
+        let ciadpiPath = store.resolvedBinaryPath(for: .ciadpi)
+        guard FileManager.default.isExecutableFile(atPath: ciadpiPath) else {
+            footerStatus = L10n.shared.shadowrocketNeedsCiadpi
+            return
+        }
+
+        isConfiguringShadowrocket = true
+        footerStatus = L10n.shared.configuringShadowrocket
+        backendSelection = .ciadpi
+        customBinaryPath = ciadpiPath
+        vpnClientCompatibilityEnabled = true
+        vpnModeEnabled = false
+        flagsByEngine[.ciadpi]?.remove("--system-proxy")
+        flagsByEngine[.spoofdpi]?.remove("--system-proxy")
+        save()
+
+        let openImport: (Bool, String?) -> Void = { [weak self] success, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.refreshRuntimeStatus()
+                guard success else {
+                    self.isConfiguringShadowrocket = false
+                    self.footerStatus = error?.isEmpty == false ? error : L10n.shared.backendStartTimeout
+                    return
+                }
+
+                let port = self.runtimePort ?? DPIKillerManager.shared.proxyPort
+                self.footerStatus = self.openShadowrocketImport(port: port)
+                    ? L10n.shared.shadowrocketOpened
+                    : L10n.shared.shadowrocketOpenFailed
+                self.isConfiguringShadowrocket = false
+            }
+        }
+
+        if DPIKillerManager.shared.isRunning || TunnelManager.shared.isActive {
+            TunnelManager.shared.stop()
+            DPIKillerManager.shared.stop()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                DPIKillerManager.shared.start { success, error in
+                    openImport(success, error)
+                    (NSApp.delegate as? AppDelegate)?.refreshUI()
+                }
+            }
+        } else {
+            DPIKillerManager.shared.start { success, error in
+                openImport(success, error)
+                (NSApp.delegate as? AppDelegate)?.refreshUI()
+            }
+        }
+    }
+
     func ensureSystemExtensionActivated() {
         isActivatingSystemExtension = true
         footerStatus = L10n.shared.diagChecking
@@ -1644,6 +1705,18 @@ final class SettingsViewModel: ObservableObject {
             return value
         }
         return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private func openShadowrocketImport(port: Int) -> Bool {
+        guard var components = URLComponents(string: "socks5://127.0.0.1:\(port)") else {
+            return false
+        }
+        components.fragment = "DPI Killer"
+        guard let url = components.url,
+              NSWorkspace.shared.urlForApplication(toOpen: url) != nil else {
+            return false
+        }
+        return NSWorkspace.shared.open(url)
     }
 
     private func clamp(_ value: String, defaultValue: Int, range: ClosedRange<Int>) -> Int {
