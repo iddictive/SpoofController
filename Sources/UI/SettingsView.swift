@@ -610,6 +610,14 @@ struct SettingsView: View {
             appToggle(title: L10n.shared.autoDownloadToggle, isOn: $viewModel.autoDownload)
             appToggle(title: L10n.shared.disableIpv6, help: L10n.shared.ipv6Warning, isOn: $viewModel.disableIpv6)
             appToggle(title: L10n.shared.autoReconnect, help: L10n.shared.tipAutoReconnect, isOn: $viewModel.autoReconnect)
+            appToggle(title: L10n.shared.vpnClientCompatibility, help: L10n.shared.tipVPNClientCompatibility, isOn: $viewModel.vpnClientCompatibilityEnabled)
+
+            if viewModel.vpnClientCompatibilityEnabled {
+                Text(viewModel.vpnClientCompatibilityStatus)
+                    .font(DPISettingsTokens.captionFont)
+                    .foregroundStyle(DPISettingsTokens.secondaryText)
+                    .padding(.leading, DPISettingsTokens.rowLabelWidth + 12)
+            }
 
             Toggle(isOn: $viewModel.vpnModeEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -622,8 +630,8 @@ struct SettingsView: View {
                 }
             }
             .toggleStyle(.checkbox)
-            .disabled(!viewModel.vpnAvailable)
-            .opacity(viewModel.vpnAvailable ? 1 : 0.55)
+            .disabled(!viewModel.vpnAvailable || viewModel.vpnClientCompatibilityEnabled)
+            .opacity(viewModel.vpnAvailable && !viewModel.vpnClientCompatibilityEnabled ? 1 : 0.55)
             .padding(.leading, 18)
 
             HStack(spacing: 8) {
@@ -871,6 +879,7 @@ final class SettingsViewModel: ObservableObject {
     @Published var autoDownload: Bool
     @Published var disableIpv6: Bool
     @Published var autoReconnect: Bool
+    @Published var vpnClientCompatibilityEnabled: Bool
     @Published var vpnModeEnabled: Bool
     @Published var ciadpiManualArgs: String
     @Published var spoofdpiManualArgs: String
@@ -938,6 +947,7 @@ final class SettingsViewModel: ObservableObject {
         autoDownload = draft.common.autoDownload
         disableIpv6 = draft.common.disableIpv6
         autoReconnect = draft.common.autoReconnect
+        vpnClientCompatibilityEnabled = draft.common.vpnClientCompatibilityEnabled
         vpnModeEnabled = draft.common.vpnModeEnabled
         ciadpiManualArgs = draft.ciadpi.manualArgs
         spoofdpiManualArgs = draft.spoofdpi.manualArgs
@@ -1003,10 +1013,13 @@ final class SettingsViewModel: ObservableObject {
 
     var runtimeStatusTitle: String {
         let portSuffix = backendRunning ? " • Port \(runtimePort ?? DPIKillerManager.shared.proxyPort)" : ""
+        if vpnClientCompatibilityEnabled {
+            return L10n.shared.runtimeModeLocalProxy + portSuffix
+        }
         if vpnModeEnabled {
             return (tunnelActive ? L10n.shared.runtimeModeVpn : L10n.shared.vpnStatusReady) + portSuffix
         }
-        return L10n.shared.runtimeModeProxy + portSuffix
+        return (selectedFlags(for: resolvedEngine).contains("--system-proxy") ? L10n.shared.runtimeModeProxy : L10n.shared.runtimeModeLocalProxy) + portSuffix
     }
 
     var runtimeBadgeStyle: SettingsBadgeStyle {
@@ -1022,6 +1035,9 @@ final class SettingsViewModel: ObservableObject {
     }
 
     var vpnStatusTitle: String {
+        if vpnClientCompatibilityEnabled {
+            return L10n.shared.runtimeModeLocalProxy
+        }
         if let vpnAvailabilityIssue {
             return vpnAvailabilityIssue
         }
@@ -1032,6 +1048,9 @@ final class SettingsViewModel: ObservableObject {
     }
 
     var vpnBadgeStyle: SettingsBadgeStyle {
+        if vpnClientCompatibilityEnabled {
+            return .neutral
+        }
         if vpnAvailabilityIssue != nil {
             return .warning
         }
@@ -1101,6 +1120,10 @@ final class SettingsViewModel: ObservableObject {
         ([resolvedBinaryPath] + buildLaunchArguments()).map(shellQuoted).joined(separator: " ")
     }
 
+    var vpnClientCompatibilityStatus: String {
+        String(format: L10n.shared.vpnClientCompatibilityStatus, clamp(localPort, defaultValue: 8080, range: 1...65535))
+    }
+
     var ciadpiFakeEnabled: Bool {
         get { clamp(httpsFakeCount, defaultValue: 0, range: 0...100) > 0 }
         set { httpsFakeCount = newValue ? "1" : "0" }
@@ -1152,11 +1175,15 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func flagEnabled(_ flag: String) -> Bool {
-        selectedFlags(for: resolvedEngine).contains(flag)
+        if flag == "--system-proxy", vpnClientCompatibilityEnabled {
+            return false
+        }
+        return selectedFlags(for: resolvedEngine).contains(flag)
     }
 
     func setFlag(_ flag: String, enabled: Bool) {
         guard flagSupported(flag) else { return }
+        guard !(flag == "--system-proxy" && vpnClientCompatibilityEnabled && enabled) else { return }
         var flags = selectedFlags(for: resolvedEngine)
         if enabled {
             flags.insert(flag)
@@ -1167,11 +1194,16 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func flagSupported(_ flag: String) -> Bool {
-        BackendCapability.forEngine(resolvedEngine).supports(flag: flag)
+        if flag == "--system-proxy", vpnClientCompatibilityEnabled {
+            return false
+        }
+        return BackendCapability.forEngine(resolvedEngine).supports(flag: flag)
     }
 
     func unsupportedReason(for flag: String) -> String {
         switch flag {
+        case "--system-proxy":
+            return text(ru: "Отключено в режиме совместимости с VPN-клиентами.", en: "Disabled in VPN client compatibility mode.")
         case "--policy-auto":
             return text(ru: "Только ciadpi.", en: "ciadpi only.")
         case "--silent", "--dns-ipv4-only", "--debug":
@@ -1218,6 +1250,9 @@ final class SettingsViewModel: ObservableObject {
         networkOptimizationApplied = store.isNetworkOptimizationApplied()
         backendRunning = DPIKillerManager.shared.isRunning
         runtimePort = DPIKillerManager.shared.activePort
+        if vpnClientCompatibilityEnabled, vpnModeEnabled {
+            vpnModeEnabled = false
+        }
         if !vpnAvailable, vpnModeEnabled {
             vpnModeEnabled = false
         }
@@ -1378,6 +1413,12 @@ final class SettingsViewModel: ObservableObject {
 
     func save() {
         guard canSave else { return }
+        let sanitizedVPNClientCompatibility = vpnClientCompatibilityEnabled
+        if sanitizedVPNClientCompatibility {
+            vpnModeEnabled = false
+            flagsByEngine[.ciadpi]?.remove("--system-proxy")
+            flagsByEngine[.spoofdpi]?.remove("--system-proxy")
+        }
         let sanitizedCommon = CommonSettings(
             localPort: String(clamp(localPort, defaultValue: 8080, range: 1...65535)),
             defaultTTL: String(clamp(defaultTTL, defaultValue: 128, range: 1...255)),
@@ -1393,7 +1434,8 @@ final class SettingsViewModel: ObservableObject {
             autoDownload: autoDownload,
             disableIpv6: disableIpv6,
             autoReconnect: autoReconnect,
-            vpnModeEnabled: vpnModeEnabled && vpnAvailable
+            vpnClientCompatibilityEnabled: sanitizedVPNClientCompatibility,
+            vpnModeEnabled: vpnModeEnabled && vpnAvailable && !sanitizedVPNClientCompatibility
         )
         let draft = SettingsDraft(
             backendSelection: backendSelection,
@@ -1417,6 +1459,7 @@ final class SettingsViewModel: ObservableObject {
         dnsAddr = sanitizedCommon.dnsAddr
         dnsMode = sanitizedCommon.dnsMode
         dnsHttpsUrl = sanitizedCommon.dnsHttpsUrl
+        vpnClientCompatibilityEnabled = sanitizedCommon.vpnClientCompatibilityEnabled
         vpnModeEnabled = sanitizedCommon.vpnModeEnabled
         refreshSpoofdpiLocalStatus()
         refreshRuntimeStatus()

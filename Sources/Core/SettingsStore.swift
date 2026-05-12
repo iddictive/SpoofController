@@ -33,6 +33,7 @@ final class SettingsStore {
         .spoofdpi: "manualArgs.spoofdpi"
     ]
     private let backendSelectionKey = "backendSelection"
+    private let lastAppliedSystemProxyPortKey = "lastAppliedSystemProxyPort"
 
     var binaryPath: String {
         get {
@@ -117,9 +118,28 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: "autoReconnect") }
     }
 
+    var vpnClientCompatibilityEnabled: Bool {
+        get { defaults.object(forKey: "vpnClientCompatibilityEnabled") as? Bool ?? false }
+        set { defaults.set(newValue, forKey: "vpnClientCompatibilityEnabled") }
+    }
+
     var vpnModeEnabled: Bool {
         get { defaults.object(forKey: "vpnModeEnabled") as? Bool ?? false }
         set { defaults.set(newValue, forKey: "vpnModeEnabled") }
+    }
+
+    var lastAppliedSystemProxyPort: Int? {
+        get {
+            guard defaults.object(forKey: lastAppliedSystemProxyPortKey) != nil else { return nil }
+            return defaults.integer(forKey: lastAppliedSystemProxyPortKey)
+        }
+        set {
+            if let newValue {
+                defaults.set(newValue, forKey: lastAppliedSystemProxyPortKey)
+            } else {
+                defaults.removeObject(forKey: lastAppliedSystemProxyPortKey)
+            }
+        }
     }
 
     var launchAtLogin: Bool {
@@ -162,7 +182,7 @@ final class SettingsStore {
     }
 
     var usesSystemProxy: Bool {
-        selectedFlags.contains("--system-proxy")
+        !vpnClientCompatibilityEnabled && selectedFlags.contains("--system-proxy")
     }
 
     func loadDraft() -> SettingsDraft {
@@ -181,6 +201,7 @@ final class SettingsStore {
             autoDownload: autoDownload,
             disableIpv6: disableIpv6,
             autoReconnect: autoReconnect,
+            vpnClientCompatibilityEnabled: vpnClientCompatibilityEnabled,
             vpnModeEnabled: vpnModeEnabled
         )
 
@@ -208,7 +229,8 @@ final class SettingsStore {
         autoDownload = draft.common.autoDownload
         disableIpv6 = draft.common.disableIpv6
         autoReconnect = draft.common.autoReconnect
-        vpnModeEnabled = draft.common.vpnModeEnabled
+        vpnClientCompatibilityEnabled = draft.common.vpnClientCompatibilityEnabled
+        vpnModeEnabled = draft.common.vpnModeEnabled && !draft.common.vpnClientCompatibilityEnabled
 
         defaultTTL = clampedString(draft.common.defaultTTL, defaultValue: 128, range: 1...255)
         splitMode = draft.common.splitMode.isEmpty ? "sni" : draft.common.splitMode
@@ -221,12 +243,20 @@ final class SettingsStore {
             : draft.common.dnsMode.trimmingCharacters(in: .whitespacesAndNewlines)
         dnsHttpsUrl = draft.common.dnsHttpsUrl.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        saveSelectedFlags(draft.ciadpi.selectedFlags, for: .ciadpi)
-        saveSelectedFlags(draft.spoofdpi.selectedFlags, for: .spoofdpi)
+        var ciadpiFlags = draft.ciadpi.selectedFlags
+        var spoofdpiFlags = draft.spoofdpi.selectedFlags
+        if draft.common.vpnClientCompatibilityEnabled {
+            ciadpiFlags.remove("--system-proxy")
+            spoofdpiFlags.remove("--system-proxy")
+        }
+
+        saveSelectedFlags(ciadpiFlags, for: .ciadpi)
+        saveSelectedFlags(spoofdpiFlags, for: .spoofdpi)
         saveManualArgs(draft.ciadpi.manualArgs, for: .ciadpi)
         saveManualArgs(draft.spoofdpi.manualArgs, for: .spoofdpi)
+        let sanitizedEngineFlags = engine == .ciadpi ? ciadpiFlags : spoofdpiFlags
         updateArgs(
-            with: engineSettings.selectedFlags,
+            with: sanitizedEngineFlags,
             manual: engineSettings.manualArgs,
             ttl: defaultTTL,
             splitMode: splitMode,

@@ -492,7 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return L10n.shared.runtimeModeProxyFallback
             }
         }
-        return L10n.shared.runtimeModeProxy
+        return SettingsStore.shared.usesSystemProxy ? L10n.shared.runtimeModeProxy : L10n.shared.runtimeModeLocalProxy
     }
 
     private func backendRuntimeTitle() -> String {

@@ -377,6 +377,7 @@ final class DPIKillerManager {
     }
 
     private func enableSystemProxy(for engine: BypassEngine, port: Int) {
+        SettingsStore.shared.lastAppliedSystemProxyPort = port
         let script: String
         switch engine.proxyMode {
         case .http:
@@ -411,13 +412,43 @@ final class DPIKillerManager {
     }
 
     func disableSystemProxy() {
+        let candidatePorts = Set([
+            activePort,
+            SettingsStore.shared.lastAppliedSystemProxyPort,
+            preferredLocalPort()
+        ].compactMap { $0 })
+        let ports = candidatePorts.map(String.init).joined(separator: " ")
+        guard !ports.isEmpty else { return }
+
         let script = """
+        app_ports=(\(ports));
+
+        owns_app_proxy() {
+          local output="$1"
+          local enabled server port
+          enabled=$(printf '%s\\n' "$output" | awk -F': ' '/^Enabled:/ {print $2; exit}')
+          server=$(printf '%s\\n' "$output" | awk -F': ' '/^Server:/ {print $2; exit}')
+          port=$(printf '%s\\n' "$output" | awk -F': ' '/^Port:/ {print $2; exit}')
+          [ "$enabled" = "Yes" ] || return 1
+          [ "$server" = "127.0.0.1" ] || [ "$server" = "localhost" ] || return 1
+          for app_port in "${app_ports[@]}"; do
+            [ "$port" = "$app_port" ] && return 0
+          done
+          return 1
+        }
+
         services=$(networksetup -listallnetworkservices | grep -v '^An asterisk' | grep -v '^\\*$');
         while IFS= read -r service; do
           [ -z "$service" ] && continue
-          networksetup -setwebproxystate "$service" off 2>/dev/null
-          networksetup -setsecurewebproxystate "$service" off 2>/dev/null
-          networksetup -setsocksfirewallproxystate "$service" off 2>/dev/null
+          if owns_app_proxy "$(networksetup -getwebproxy "$service" 2>/dev/null)"; then
+            networksetup -setwebproxystate "$service" off 2>/dev/null
+          fi
+          if owns_app_proxy "$(networksetup -getsecurewebproxy "$service" 2>/dev/null)"; then
+            networksetup -setsecurewebproxystate "$service" off 2>/dev/null
+          fi
+          if owns_app_proxy "$(networksetup -getsocksfirewallproxy "$service" 2>/dev/null)"; then
+            networksetup -setsocksfirewallproxystate "$service" off 2>/dev/null
+          fi
         done <<< "$services"
         """
         let process = Process()
@@ -425,6 +456,7 @@ final class DPIKillerManager {
         process.arguments = ["-c", script]
         try? process.run()
         process.waitUntilExit()
+        SettingsStore.shared.lastAppliedSystemProxyPort = nil
     }
 
     private func installScript() -> String {

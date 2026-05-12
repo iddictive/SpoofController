@@ -23,6 +23,9 @@ This repository now contains the full local code path for a macOS
   unusable VPN toggle automatically and falls back to the working proxy mode.
 - This avoids false green states and avoids repeated dead-end attempts to launch
   a tunnel that macOS will reject.
+- For Shadowrocket or another VPN client, use the app's VPN client
+  compatibility setting instead of `Packet Tunnel`. That keeps DPI Killer as a
+  local proxy and leaves VPN routing ownership to the other client.
 
 ## What still blocks a real TUN/VPN launch
 

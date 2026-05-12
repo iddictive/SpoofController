@@ -114,6 +114,7 @@ struct CommonSettings {
     var autoDownload: Bool
     var disableIpv6: Bool
     var autoReconnect: Bool
+    var vpnClientCompatibilityEnabled: Bool
     var vpnModeEnabled: Bool
 }
 

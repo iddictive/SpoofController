@@ -131,6 +131,7 @@ struct L10n {
     var runtimeModeTitle: String { isRussian ? "Режим:" : "Mode:" }
     var runtimeModeVpn: String { isRussian ? "Packet Tunnel VPN" : "Packet Tunnel VPN" }
     var runtimeModeProxy: String { isRussian ? "Системный proxy" : "System Proxy" }
+    var runtimeModeLocalProxy: String { isRussian ? "Локальный proxy" : "Local Proxy" }
     var runtimeModeProxyFallback: String { isRussian ? "Proxy fallback" : "Proxy fallback" }
     var runtimeModeOff: String { isRussian ? "Остановлен" : "Stopped" }
     var vpnStatusReady: String { isRussian ? "VPN-контур доступен. При запуске будет использоваться Packet Tunnel." : "The VPN path is available. Packet Tunnel will be used on start." }
@@ -178,6 +179,9 @@ struct L10n {
 
     var autoReconnect: String { isRussian ? "Авто-реконнект" : "Auto-reconnect" }
     var tipAutoReconnect: String { isRussian ? "Автоматически восстанавливать прокси при восстановлении WiFi." : "Automatically restore proxy when WiFi connection is restored." }
+    var vpnClientCompatibility: String { isRussian ? "Совместимость с VPN-клиентами" : "VPN client compatibility" }
+    var tipVPNClientCompatibility: String { isRussian ? "Для Shadowrocket и похожих клиентов: DPI Killer оставит только локальный proxy." : "For Shadowrocket and similar clients: DPI Killer will expose only the local proxy." }
+    var vpnClientCompatibilityStatus: String { isRussian ? "VPN-клиент может использовать 127.0.0.1:%d как upstream." : "VPN client can use 127.0.0.1:%d as upstream." }
 
     var sectionCore: String { isRussian ? "Core" : "Core" }
     var sectionBackend: String { isRussian ? "Движок" : "Backend" }

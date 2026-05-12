@@ -40,9 +40,9 @@ It is a **GoodbyeDPI Mac alternative** that restores access to YouTube and block
 
 ### VPN Compatibility
 To use DPI Killer alongside a VPN (like Shadowrocket, AdGuard, etc.):
-1. **Disable `Use system-wide proxy`** in DPI Killer Settings.
+1. Enable **VPN client compatibility** in DPI Killer Settings.
 2. Configure your VPN to use `127.0.0.1:8080` (or your custom port) as the **upstream (parent) proxy**.
-3. This allows the VPN to handle routing while DPI Killer handles DPI bypassing.
+3. This keeps Shadowrocket in charge of routing while DPI Killer provides only the local DPI-bypass proxy.
 
 ### Uninstall
 ```bash
@@ -81,9 +81,9 @@ curl -sL https://raw.githubusercontent.com/iddictive/DPI-Killer/main/scripts/uni
 
 ### Совместимость с VPN
 Чтобы использовать DPI Killer вместе с VPN (Shadowrocket, AdGuard и т.д.):
-1. **Отключите `Использовать системный прокси`** в настройках DPI Killer.
+1. Включите **Совместимость с VPN-клиентами** в настройках DPI Killer.
 2. В самом VPN-клиенте укажите `127.0.0.1:8080` (или ваш порт) в качестве **родительского (upstream) прокси**.
-3. Таким образом VPN будет отвечать за маршрутизацию, а DPI Killer — за обход DPI.
+3. Так Shadowrocket отвечает за маршрутизацию, а DPI Killer остаётся локальным proxy для обхода DPI.
 
 ### Удаление
 ```bash
