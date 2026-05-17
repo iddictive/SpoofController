@@ -79,7 +79,11 @@ final class DPIKillerManager {
         start(forceSystemProxy: true, completion: completion)
     }
 
-    private func start(forceSystemProxy: Bool, completion: @escaping (Bool, String?) -> Void) {
+    private func start(
+        forceSystemProxy: Bool,
+        attemptedBPFRepair: Bool = false,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
         forceSystemProxyOverride = forceSystemProxy
         if isRunning {
             stop()
@@ -113,6 +117,26 @@ final class DPIKillerManager {
         process.arguments = SettingsStore.shared.launchArguments(for: binaryPath, port: port)
 
         let pipe = Pipe()
+        let startupOutputLock = NSLock()
+        var startupOutputLines: [String] = []
+        let captureStartupOutput: (String) -> Void = { text in
+            let lines = text.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard !lines.isEmpty else { return }
+
+            startupOutputLock.lock()
+            startupOutputLines.append(contentsOf: lines)
+            if startupOutputLines.count > 12 {
+                startupOutputLines.removeFirst(startupOutputLines.count - 12)
+            }
+            startupOutputLock.unlock()
+        }
+        let capturedStartupOutput: () -> String = {
+            startupOutputLock.lock()
+            defer { startupOutputLock.unlock() }
+            return startupOutputLines.joined(separator: "\n")
+        }
         outputPipe = pipe
         process.standardOutput = pipe
         process.standardError = pipe
@@ -124,6 +148,7 @@ final class DPIKillerManager {
                 return
             }
             if let str = String(data: data, encoding: .utf8), !str.isEmpty {
+                captureStartupOutput(str)
                 let shouldStore = LogStore.shared.shouldCaptureProcessLogs()
                     || SettingsStore.shared.selectedFlags.contains("--debug")
                 if shouldStore {
@@ -154,7 +179,32 @@ final class DPIKillerManager {
                     guard let self = self else { return }
                     guard self.process === process, process.isRunning else {
                         self.isRunning = false
-                        completion(false, L10n.shared.backendExitedEarly)
+                        let output = capturedStartupOutput()
+                        if self.shouldAttemptBPFRepair(engine: engine, output: output, attempted: attemptedBPFRepair) {
+                            AppLogger.log("[Manager] SpoofDPI needs BPF access. Attempting environment repair...")
+                            self.repairBPFAccess { repairSuccess, repairError in
+                                guard repairSuccess else {
+                                    completion(
+                                        false,
+                                        self.backendStartupFailureMessage(
+                                            base: repairError ?? L10n.shared.backendExitedEarly,
+                                            output: output
+                                        )
+                                    )
+                                    return
+                                }
+                                AppLogger.log("[Manager] BPF access repair completed. Restarting backend...")
+                                self.start(forceSystemProxy: forceSystemProxy, attemptedBPFRepair: true, completion: completion)
+                            }
+                            return
+                        }
+                        completion(
+                            false,
+                            self.backendStartupFailureMessage(
+                                base: L10n.shared.backendExitedEarly,
+                                output: output
+                            )
+                        )
                         return
                     }
 
@@ -166,7 +216,13 @@ final class DPIKillerManager {
                         self.process = nil
                         self.isRunning = false
                         self.disableSystemProxy()
-                        completion(false, L10n.shared.backendStartTimeout)
+                        completion(
+                            false,
+                            self.backendStartupFailureMessage(
+                                base: L10n.shared.backendStartTimeout,
+                                output: capturedStartupOutput()
+                            )
+                        )
                         (NSApp.delegate as? AppDelegate)?.refreshUI()
                         return
                     }
@@ -543,6 +599,108 @@ final class DPIKillerManager {
             }
             completion(false)
         }
+    }
+
+    private func backendStartupFailureMessage(base: String, output: String) -> String {
+        let trimmedOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedOutput.isEmpty else { return base }
+        return "\(base)\n\nBackend output:\n\(trimmedOutput)"
+    }
+
+    private func shouldAttemptBPFRepair(engine: BypassEngine, output: String, attempted: Bool) -> Bool {
+        guard engine == .spoofdpi, !attempted else { return false }
+        let normalizedOutput = output.lowercased()
+        return normalizedOutput.contains("pcap")
+            && normalizedOutput.contains("permission denied")
+            && (normalizedOutput.contains("/dev/bpf") || normalizedOutput.contains("open pcap handle"))
+    }
+
+    private func repairBPFAccess(completion: @escaping (Bool, String?) -> Void) {
+        let currentUser = NSUserName()
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>Label</key>
+          <string>com.antigravity.DPIKiller.ChmodBPF</string>
+          <key>ProgramArguments</key>
+          <array>
+            <string>/bin/sh</string>
+            <string>-c</string>
+            <string>/usr/bin/chgrp access_bpf /dev/bpf* 2&gt;/dev/null || true; /bin/chmod g+rw /dev/bpf* 2&gt;/dev/null || true</string>
+          </array>
+          <key>RunAtLoad</key>
+          <true/>
+        </dict>
+        </plist>
+        """
+        let script = """
+        set -e
+        user_name=\(shellQuoted(currentUser))
+        group_name=access_bpf
+        plist_path=/Library/LaunchDaemons/com.antigravity.DPIKiller.ChmodBPF.plist
+
+        if ! /usr/sbin/dseditgroup -q -o read "$group_name" >/dev/null 2>&1; then
+          /usr/sbin/dseditgroup -q -o create "$group_name"
+        fi
+        /usr/sbin/dseditgroup -q -o edit -a "$user_name" -t user "$group_name"
+
+        /bin/cat > "$plist_path" <<'PLIST'
+        \(plist)
+        PLIST
+        /usr/sbin/chown root:wheel "$plist_path"
+        /bin/chmod 644 "$plist_path"
+
+        /usr/bin/chgrp "$group_name" /dev/bpf* 2>/dev/null || true
+        /bin/chmod g+rw /dev/bpf* 2>/dev/null || true
+        /bin/chmod +a "$user_name allow read,write" /dev/bpf* 2>/dev/null || true
+
+        /bin/launchctl bootout system "$plist_path" >/dev/null 2>&1 || true
+        /bin/launchctl bootstrap system "$plist_path" >/dev/null 2>&1 || true
+        /bin/launchctl kickstart -k system/com.antigravity.DPIKiller.ChmodBPF >/dev/null 2>&1 || true
+        """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = [
+            "-e",
+            "do shell script \(appleScriptQuoted(script)) with administrator privileges"
+        ]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        do {
+            try process.run()
+            DispatchQueue.global(qos: .utility).async {
+                process.waitUntilExit()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                DispatchQueue.main.async {
+                    if process.terminationStatus == 0 {
+                        completion(true, nil)
+                    } else {
+                        completion(false, output?.isEmpty == false ? output : L10n.shared.backendExitedEarly)
+                    }
+                }
+            }
+        } catch {
+            completion(false, error.localizedDescription)
+        }
+    }
+
+    private func shellQuoted(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private func appleScriptQuoted(_ value: String) -> String {
+        "\"" + value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            + "\""
     }
 
     private func isLocalPortReachable(port: Int) -> Bool {
